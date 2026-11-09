@@ -159,10 +159,12 @@ RUN printf '%s\n' \
 
 RUN chmod +x /usr/local/bin/goose-litellm
 
-# Set up goose and LiteLLM environment for appuser
+# Set up goose and LiteLLM environment for appuser.
+# NOTE: GOOSETOWN_DIR is NOT set here - the container entrypoint clones a
+# goosetown working repository into the workspace and exports GOOSETOWN_DIR
+# (plus GUIDES_DIR/PLANS_DIR/RESEARCH_DIR/WORK_LOGS_DIR) pointing at it.
+# /app/goosetown remains in the image only as a tooling fallback.
 RUN echo 'export PATH="/usr/local/bin:$PATH"' >> /home/appuser/.bashrc \
-    && echo 'export GOOSETOWN_DIR="/app/goosetown"' >> /home/appuser/.bashrc \
-    && echo 'export PYTHONPATH="/app/goosetown:${PYTHONPATH:-}"' >> /home/appuser/.bashrc \
     && echo 'export GOOSE_LLM_PROVIDER="${GOOSE_LLM_PROVIDER:-custom}"' >> /home/appuser/.bashrc \
     && echo 'export GOOSE_LLM_MODEL="${GOOSE_LLM_MODEL:-mistral-small-latest}"' >> /home/appuser/.bashrc \
     && echo 'export GOOSE_NO_ANALYTICS="1"' >> /home/appuser/.bashrc

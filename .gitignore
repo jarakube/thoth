@@ -4,5 +4,3 @@ build/
 .env
 workspace/*
 !workspace/.gitkeep
-goosetown-data/*
-!goosetown-data/.gitkeep

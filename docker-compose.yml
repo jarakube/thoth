@@ -15,10 +15,12 @@
 # Prometheus metrics: http://localhost:9464/metrics
 #
 # Mount layout - user-generated data stays on the host filesystem:
-#   ${WORKSPACE_DIR:-./workspace}                  -> /workspace  (agent working dir)
-#   ${GOOSETOWN_DATA_HOST_DIR:-./goosetown-data}   -> /data       (goosetown GUIDES/PLANS/RESEARCH/WORK_LOGS)
-#   ./share/opencode-runs                          -> /app/share/opencode-runs (per-run artifacts, gitignored)
-#   opencode-data (named volume)                   -> /home/appuser/.local/share/opencode (auth/sessions)
+#   ${WORKSPACE_DIR:-./workspace}  -> /workspace  (agent working dir; a goosetown
+#                                       clone is created at /workspace/goosetown
+#                                       on first start - all goosetown env
+#                                       points there)
+#   ./share/opencode-runs          -> /app/share/opencode-runs (per-run artifacts, gitignored)
+#   opencode-data (named volume)   -> /home/appuser/.local/share/opencode (auth/sessions)
 #
 # Permissions: the container runs as appuser (uid 1000). Host bind-mount
 # directories must exist and be writable by uid 1000 - the defaults ship
@@ -74,20 +76,22 @@ services:
       OPENCODE_METRICS_PORT: ${OPENCODE_METRICS_PORT:-9464}
       # Per-run artifacts land on the host (bind mount below)
       OPENCODE_RUN_METRICS_DIR: /app/share/opencode-runs
-      # Goosetown working directories on the host (bind mount below).
-      # Set here as container env so ALL shells see them (also non-interactive
-      # `docker compose exec bash -c`), not just PID 1.
-      GOOSETOWN_DATA_DIR: /data
-      GOOSETOWN_DIR: /data/goosetown
-      GUIDES_DIR: /data/goosetown/GUIDES
-      PLANS_DIR: /data/goosetown/PLANS
-      RESEARCH_DIR: /data/goosetown/RESEARCH
-      WORK_LOGS_DIR: /data/goosetown/WORK_LOGS
+      # Goosetown: a working clone is created at /workspace/goosetown on
+      # first start. Set here as container env so ALL shells see them (also
+      # non-interactive `docker compose exec bash -c`), not just PID 1.
+      # Override GOOSETOWN_DIR (and friends) in .env, not here, so the
+      # derived paths follow your override.
+      GOOSETOWN_DIR: ${GOOSETOWN_DIR:-/workspace/goosetown}
+      GUIDES_DIR: ${GOOSETOWN_DIR:-/workspace/goosetown}/GUIDES
+      PLANS_DIR: ${GOOSETOWN_DIR:-/workspace/goosetown}/PLANS
+      RESEARCH_DIR: ${GOOSETOWN_DIR:-/workspace/goosetown}/RESEARCH
+      WORK_LOGS_DIR: ${GOOSETOWN_DIR:-/workspace/goosetown}/WORK_LOGS
+      GOOSETOWN_REPO_URL: ${GOOSETOWN_REPO_URL:-https://github.com/aaif-goose/goosetown.git}
+      GOOSETOWN_REF: ${GOOSETOWN_REF:-}
     volumes:
-      # Project directory the agent works on
+      # Project directory the agent works on; goosetown is cloned INTO it at
+      # workspace/goosetown (host-visible) on first start
       - ${WORKSPACE_DIR:-./workspace}:/workspace
-      # Goosetown working directories (GUIDES/PLANS/RESEARCH/WORK_LOGS)
-      - ${GOOSETOWN_DATA_HOST_DIR:-./goosetown-data}:/data
       # Per-run metrics artifacts (gitignored, inspectable on the host)
       - ./share/opencode-runs:/app/share/opencode-runs
       # OpenCode state: auth.json, sessions, storage. Named volume so

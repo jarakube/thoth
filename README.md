@@ -9,7 +9,7 @@ Prometheus metrics endpoint for agent runs.
 This repository builds a CLI agent image that combines:
 
 - [OpenCode](https://opencode.ai) (`opencode-ai`) for interactive coding/ops workflows
-- [Goose](https://github.com/aaif-goose/goose) + [Goosetown](https://github.com/block/goosetown) for multi-agent orchestration
+- [Goose](https://github.com/aaif-goose/goose) + [Goosetown](https://github.com/aaif-goose/goosetown) for multi-agent orchestration
 - `kubectl` for Kubernetes cluster access
 - A small, generic skill pack (currently a Ceph expert skill)
 
@@ -22,7 +22,7 @@ where Kubernetes and storage knowledge are needed in the same environment.
 |-----------|----------------------|-------|
 | OpenCode | `/usr/local/bin/opencode` | Installed from npm (`opencode-ai@latest`) by default; see below for custom builds |
 | Goose | `/usr/local/bin/goose` | Pinned via `ARG GOOSE_VERSION` (default `v1.50.0`) |
-| Goosetown | `/app/goosetown` | Public [block/goosetown](https://github.com/block/goosetown) git submodule |
+| Goosetown | `/app/goosetown` | Public [aaif-goose/goosetown](https://github.com/aaif-goose/goosetown) git submodule |
 | kubectl | `/usr/local/bin/kubectl` | v1.36 from pkgs.k8s.io |
 | Skills | `/home/appuser/.config/opencode/skills/` | Everything from repo `skills/` directory |
 | Metrics exporter | `/app/scripts/opencode-prometheus-exporter.py` | Listens on `:9464` |
@@ -71,9 +71,14 @@ make shell             # interactive bash in /workspace
 
 - The agent lands in `/workspace` (defaults to `./workspace/`, override with
   `WORKSPACE_DIR` in `.env`)
-- All user-generated data stays on the **host filesystem**: workspace,
-  goosetown working dirs (`./goosetown-data/`), and per-run metrics
-  (`./share/opencode-runs/`) are bind mounts you can inspect directly
+- All user-generated data stays on the **host filesystem**: workspace and
+  per-run metrics (`./share/opencode-runs/`) are bind mounts you can inspect
+  directly
+- A **goosetown working clone** is created at `workspace/goosetown` on first
+  start (host-visible), and all goosetown env (`GOOSETOWN_DIR`, `GUIDES_DIR`,
+  `PLANS_DIR`, `RESEARCH_DIR`, `WORK_LOGS_DIR`) points into it. Override with
+  `GOOSETOWN_DIR`/`GOOSETOWN_REPO_URL`/`GOOSETOWN_REF` to use your own fork
+  or an existing clone
 - `opencode auth login` state persists in the `opencode-data` named volume
   across restarts (kept out of the project dir since it holds credentials)
 - Prometheus metrics at `http://localhost:9464/metrics`
@@ -194,7 +199,7 @@ docker run --rm -it \
 ## Goose / Goosetown
 
 The image also ships [Goose](https://github.com/aaif-goose/goose) and the
-[Goosetown](https://github.com/block/goosetown) multi-agent framework:
+[Goosetown](https://github.com/aaif-goose/goosetown) multi-agent framework:
 
 ```bash
 # interactive goose session
@@ -216,9 +221,16 @@ Details:
 - `configure-goose.sh` - helper to drive `goose configure` non-interactively
   inside a running container (`CONTAINER=<name> ./configure-goose.sh`)
 
-To persist goosetown working directories (GUIDES, PLANS, RESEARCH, WORK_LOGS)
-across container restarts, set `GOOSETOWN_DATA_DIR` to a mounted volume path;
-the entrypoint relocates the directories under `<path>/goosetown/`.
+Goosetown runs as a **working clone inside the workspace**: the container
+entrypoint clones `https://github.com/aaif-goose/goosetown.git` to
+`workspace/goosetown` on first start (skipped if the directory already
+exists), and points `GOOSETOWN_DIR`, `GUIDES_DIR`, `PLANS_DIR`,
+`RESEARCH_DIR` and `WORK_LOGS_DIR` at it. Its working dirs live inside the
+clone (upstream gitignores them), so everything the orchestrator produces
+persists on the host through the workspace bind mount. Use your own fork via
+`GOOSETOWN_REPO_URL`/`GOOSETOWN_REF`, or point `GOOSETOWN_DIR` at an existing
+clone. The image also carries a tooling copy at `/app/goosetown` used as
+fallback for the `goose` telepathy wrapper.
 
 ## CI
 

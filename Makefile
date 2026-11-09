@@ -35,7 +35,6 @@ ps:
 	docker compose ps
 
 # Remove containers AND the opencode-data named volume.
-# Host bind mounts (workspace/, goosetown-data/, share/opencode-runs/) are
-# never touched.
+# Host bind mounts (workspace/, share/opencode-runs/) are never touched.
 clean:
 	docker compose down -v

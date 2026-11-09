@@ -23,39 +23,53 @@ if [ -f "/usr/local/bin/goose-opencode" ] && [ "$1" = "opencode" ]; then
   set -- goose-opencode "${@:2}"
 fi
 
-# Optional: relocate goosetown working directories to a mounted volume.
-# Set GOOSETOWN_DATA_DIR (e.g. to a persistent PVC mount) before starting
-# the container; GUIDES, PLANS, RESEARCH and WORK_LOGS will live under
-# ${GOOSETOWN_DATA_DIR}/goosetown/ instead of the ephemeral container fs.
-if [ -n "${GOOSETOWN_DATA_DIR:-}" ]; then
-  export GOOSETOWN_DIR="${GOOSETOWN_DATA_DIR}/goosetown"
-  export GUIDES_DIR="${GOOSETOWN_DIR}/GUIDES"
-  export PLANS_DIR="${GOOSETOWN_DIR}/PLANS"
-  export RESEARCH_DIR="${GOOSETOWN_DIR}/RESEARCH"
-  export WORK_LOGS_DIR="${GOOSETOWN_DIR}/WORK_LOGS"
-
-  # Also persist to .bashrc so interactive shells (docker compose exec)
-  # see the same locations; these shells do not inherit PID 1's exports.
-  if [ -f "/home/appuser/.bashrc" ] && ! grep -q "GOOSETOWN_DATA_DIR" /home/appuser/.bashrc 2>/dev/null; then
-    cat >> /home/appuser/.bashrc <<BASHRC_EOF
-
-# Goosetown working directories on a mounted volume
-export GOOSETOWN_DATA_DIR="${GOOSETOWN_DATA_DIR}"
-export GOOSETOWN_DIR="${GOOSETOWN_DIR}"
-export GUIDES_DIR="${GUIDES_DIR}"
-export PLANS_DIR="${PLANS_DIR}"
-export RESEARCH_DIR="${RESEARCH_DIR}"
-export WORK_LOGS_DIR="${WORK_LOGS_DIR}"
-BASHRC_EOF
+# Goosetown: all goosetown env points at a cloned goosetown repository
+# inside the workspace (host-visible via the workspace bind mount). The clone
+# happens on first start; to use your own goosetown fork, place a clone at
+# $GOOSETOWN_DIR (default /workspace/goosetown) or point GOOSETOWN_DIR at it.
+goosetown_dir="${GOOSETOWN_DIR:-/workspace/goosetown}"
+if [ ! -e "$goosetown_dir" ]; then
+  goosetown_url="${GOOSETOWN_REPO_URL:-https://github.com/aaif-goose/goosetown.git}"
+  clone_args=()
+  if [ -n "${GOOSETOWN_REF:-}" ]; then
+    clone_args+=(--branch "$GOOSETOWN_REF")
+  fi
+  echo "Cloning goosetown from ${goosetown_url} into ${goosetown_dir} ..."
+  if git clone "${clone_args[@]+"${clone_args[@]}"}" "$goosetown_url" "$goosetown_dir"; then
+    echo "goosetown cloned. Working dirs (GUIDES/PLANS/RESEARCH/WORK_LOGS) live inside it."
+  else
+    echo "WARNING: could not clone goosetown; goose/goosetown orchestrator may not work" >&2
   fi
 fi
+export GOOSETOWN_DIR="$goosetown_dir"
+export GUIDES_DIR="$goosetown_dir/GUIDES"
+export PLANS_DIR="$goosetown_dir/PLANS"
+export RESEARCH_DIR="$goosetown_dir/RESEARCH"
+export WORK_LOGS_DIR="$goosetown_dir/WORK_LOGS"
 
-# Use goose wrapper script from goosetown directory to enable telepathy and wall
-# This sets up orchestrator -> delegate communication
+# Persist to .bashrc so interactive shells (docker compose exec) see the
+# same locations; these shells do not inherit PID 1's exports.
+if [ -f "/home/appuser/.bashrc" ] && ! grep -q "GOOSETOWN_DIR=" /home/appuser/.bashrc 2>/dev/null; then
+  cat >> /home/appuser/.bashrc <<BASHRC_EOF
+
+# Goosetown working repository (cloned into the workspace)
+export GOOSETOWN_DIR="$goosetown_dir"
+export GUIDES_DIR="$goosetown_dir/GUIDES"
+export PLANS_DIR="$goosetown_dir/PLANS"
+export RESEARCH_DIR="$goosetown_dir/RESEARCH"
+export WORK_LOGS_DIR="$goosetown_dir/WORK_LOGS"
+BASHRC_EOF
+fi
+
+# Use goose wrapper from the workspace goosetown clone (telepathy + wall);
+# fall back to the copy baked into the image at /app/goosetown.
 if [ "$1" = "goose" ]; then
-  GOOSE_WRAPPER="/app/goosetown/goose"
+  GOOSE_WRAPPER="${GOOSETOWN_DIR}/goose"
+  if [ ! -f "$GOOSE_WRAPPER" ]; then
+    GOOSE_WRAPPER="/app/goosetown/goose"
+  fi
   if [ -f "$GOOSE_WRAPPER" ]; then
-    echo "🦆 goosetown telepathy enabled - using goose wrapper..."
+    echo "🦆 goosetown telepathy enabled - using $GOOSE_WRAPPER"
     set -- "$GOOSE_WRAPPER" "${@:2}"
   fi
 fi
