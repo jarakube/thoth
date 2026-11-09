@@ -308,6 +308,23 @@ configs that reuse that bearer token.
    opencode auth list
    ```
 
+## MCP servers
+
+Both agents support remote MCP servers (streamable-http). On first start the
+container registers a public example server, `https://jarakube.eu/mcp`
+(Jaraco website content: services, blog posts, categories, Jarakube
+resources), with **both** OpenCode and goose. Opt out with
+`MCP_EXAMPLE_ENABLED=0`, or override name/URL via `MCP_EXAMPLE_NAME` /
+`MCP_EXAMPLE_URL`.
+
+Verify:
+
+```bash
+opencode mcp list    # shows jarakube-website (connected)
+```
+
+See [docs/mcp.md](docs/mcp.md) for adding your own servers to either agent.
+
 ## Repository notes
 
 - Add new skills under `skills/<name>/SKILL.md`; they will be copied into the

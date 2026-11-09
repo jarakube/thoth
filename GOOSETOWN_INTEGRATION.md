@@ -16,9 +16,13 @@ The main Dockerfile (`Dockerfile`) has been updated to include goose and gooseto
 
 #### Added goose Binary Installation:
 ```dockerfile
-RUN mkdir -p /usr/local/bin \
-    && curl -fsSL https://github.com/aaif-goose/goose/releases/download/v1.25.0/goose-v1.25.0-linux-amd64 -o /usr/local/bin/goose \
-    && chmod +x /usr/local/bin/goose
+# Current Dockerfile installs goose via scripts/install-goose.sh from the
+# GitHub releases (asset naming: goose-<arch>-unknown-linux-gnu.tar.bz2):
+# https://github.com/aaif-goose/goose/releases
+ARG GOOSE_VERSION=v1.50.0
+COPY --chmod=755 scripts/install-goose.sh /usr/local/bin/install-goose.sh
+RUN GOOSE_VERSION=${GOOSE_VERSION} GOOSE_BIN_DIR=/usr/local/bin \
+    /usr/local/bin/install-goose.sh && /usr/local/bin/goose --version
 ```
 
 #### Added goosetown Directory:
@@ -38,10 +42,11 @@ COPY --chown=appuser:appuser goosetown/dashboard /usr/local/bin/goosetown-dashbo
 
 #### Added Environment Setup:
 ```dockerfile
-# Set up goosetown environment for appuser
-RUN echo 'export PATH="/usr/local/bin:$PATH"' >> /home/appuser/.bashrc \
-    && echo 'export GOOSETOWN_DIR="/app/goosetown"' >> /home/appuser/.bashrc \
-    && echo 'export PYTHONPATH="/app/goosetown:${PYTHONPATH:-}"' >> /home/appuser/.bashrc
+# NOTE: GOOSETOWN_DIR is set by the container entrypoint, which clones a
+# goosetown working repository into the workspace and points GOOSETOWN_DIR
+# (plus GUIDES_DIR/PLANS_DIR/RESEARCH_DIR/WORK_LOGS_DIR) at it. The image
+# copy at /app/goosetown is a tooling fallback only.
+RUN echo 'export PATH="/usr/local/bin:$PATH"' >> /home/appuser/.bashrc
 ```
 
 #### Updated File Permissions:
@@ -53,7 +58,7 @@ RUN chown -R appuser:appuser /home/appuser/.local /home/appuser/.ssh /home/appus
 
 With these changes, the coding agent container now includes:
 
-1. **goose CLI** - The AI agent framework from block/aaif-goose
+1. **goose CLI** - The AI agent framework from the [Agentic AI Foundation](https://github.com/aaif-goose/goose)
    - Available at `/usr/local/bin/goose`
    - Can be invoked directly or via the entrypoint
 

@@ -12,6 +12,19 @@ metrics_host="${OPENCODE_METRICS_HOST:-0.0.0.0}"
 metrics_port="${OPENCODE_METRICS_PORT:-9464}"
 metrics_dir="${OPENCODE_RUN_METRICS_DIR:-/app/share/opencode-runs}"
 
+# Fail fast with a clear message when the workspace is not writable by the
+# container user. Most common cause: image built with a different APP_UID
+# than the host user that owns the workspace bind mount (build with
+# HOST_UID=$(id -u) HOST_GID=$(id -g), or use `make up`).
+if [ ! -w /workspace ]; then
+  echo "ERROR: /workspace is not writable by $(id -u):$(id -g)." >&2
+  echo "       The image was likely built with a different APP_UID than the" >&2
+  echo "       owner of the workspace bind mount." >&2
+  echo "       Rebuild with: HOST_UID=\$(id -u) HOST_GID=\$(id -g) docker compose build" >&2
+  echo "       or just use: make up" >&2
+  exit 1
+fi
+
 # Map opencode configuration to goose at startup
 if [ -f "/home/appuser/.config/goose/setup-goose-env.sh" ]; then
   source /home/appuser/.config/goose/setup-goose-env.sh
@@ -79,6 +92,36 @@ if [[ "$metrics_enabled" != "0" ]]; then
     --host "$metrics_host" \
     --port "$metrics_port" \
     --metrics-dir "$metrics_dir" &
+fi
+
+# Register the example remote MCP server (https://jarakube.eu/mcp) with
+# both agents on first start. Opt out with MCP_EXAMPLE_ENABLED=0; override
+# name/url with MCP_EXAMPLE_NAME / MCP_EXAMPLE_URL.
+if [ "${MCP_EXAMPLE_ENABLED:-1}" != "0" ]; then
+  mcp_name="${MCP_EXAMPLE_NAME:-jarakube-website}"
+  mcp_url="${MCP_EXAMPLE_URL:-https://jarakube.eu/mcp}"
+
+  # OpenCode: only add if not already configured (idempotent)
+  if command -v opencode >/dev/null 2>&1 \
+     && ! opencode mcp list 2>/dev/null | grep -q "^${mcp_name}\|${mcp_name}"; then
+    if opencode mcp add "$mcp_name" --url "$mcp_url" >/dev/null 2>&1; then
+      echo "Registered example MCP server '${mcp_name}' ($mcp_url) with opencode"
+    fi
+  fi
+
+  # Goose: merge into ~/.config/goose/config.yaml if not present
+  goose_config="/home/appuser/.config/goose/config.yaml"
+  if [ ! -f "$goose_config" ] || ! grep -q "^[[:space:]]*${mcp_name}:" "$goose_config"; then
+    mkdir -p /home/appuser/.config/goose
+    touch "$goose_config"
+    if [ -s "$goose_config" ] && ! grep -q "^mcp_servers:" "$goose_config"; then
+      printf '\nmcp_servers:\n' >> "$goose_config"
+    elif [ ! -s "$goose_config" ]; then
+      printf 'mcp_servers:\n' >> "$goose_config"
+    fi
+    printf '  %s:\n    url: %s\n' "$mcp_name" "$mcp_url" >> "$goose_config"
+    echo "Registered example MCP server '${mcp_name}' ($mcp_url) with goose"
+  fi
 fi
 
 # Add Goosetown aliases to bashrc for persistence
