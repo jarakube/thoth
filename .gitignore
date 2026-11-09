@@ -2,4 +2,7 @@ share/opencode-runs/*
 !share/opencode-runs/.gitkeep
 build/
 .env
-workspace/
+workspace/*
+!workspace/.gitkeep
+goosetown-data/*
+!goosetown-data/.gitkeep

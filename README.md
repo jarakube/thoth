@@ -60,21 +60,33 @@ docker run --rm -it agent
 
 ### Docker Compose (recommended)
 
-The easiest way to run the container, with persistent volumes for OpenCode
-auth/sessions, run metrics, and goosetown working directories:
+The easiest way to run the container. User-generated data stays on the host
+filesystem; only OpenCode auth/session state lives in a named volume:
 
 ```bash
 cp .env.example .env   # optional: add provider keys, set WORKSPACE_DIR
-docker compose up -d --build
-docker compose exec agent bash
+make up                # = HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d --build
+make shell             # interactive bash in /workspace
 ```
 
 - The agent lands in `/workspace` (defaults to `./workspace/`, override with
   `WORKSPACE_DIR` in `.env`)
-- `opencode auth login` state persists in the `opencode-data` volume across
-  restarts
+- All user-generated data stays on the **host filesystem**: workspace,
+  goosetown working dirs (`./goosetown-data/`), and per-run metrics
+  (`./share/opencode-runs/`) are bind mounts you can inspect directly
+- `opencode auth login` state persists in the `opencode-data` named volume
+  across restarts (kept out of the project dir since it holds credentials)
 - Prometheus metrics at `http://localhost:9464/metrics`
-- One-shot sessions: `docker compose run --rm agent opencode`
+- One-shot sessions: `make run CMD="opencode"` or
+  `docker compose run --rm agent opencode`
+
+Permissions: the image builds `appuser` with your host uid/gid
+(`APP_UID`/`APP_GID` build args; `make` passes them automatically, plain
+`docker compose` reads `HOST_UID`/`HOST_GID` from `.env` or the
+environment). Host bind-mount directories must exist and be writable by
+that uid - the defaults ship `.gitkeep` files so they exist with your
+ownership after clone. Nothing on the host is ever chowned by compose or
+the container.
 
 If you need cluster access, mount your kubeconfig (uncomment the line in
 `docker-compose.yml`):

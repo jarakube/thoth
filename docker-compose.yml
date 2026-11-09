@@ -13,41 +13,34 @@
 #   docker compose run --rm agent goose
 #
 # Prometheus metrics: http://localhost:9464/metrics
+#
+# Mount layout - user-generated data stays on the host filesystem:
+#   ${WORKSPACE_DIR:-./workspace}                  -> /workspace  (agent working dir)
+#   ${GOOSETOWN_DATA_HOST_DIR:-./goosetown-data}   -> /data       (goosetown GUIDES/PLANS/RESEARCH/WORK_LOGS)
+#   ./share/opencode-runs                          -> /app/share/opencode-runs (per-run artifacts, gitignored)
+#   opencode-data (named volume)                   -> /home/appuser/.local/share/opencode (auth/sessions)
+#
+# Permissions: the container runs as appuser (uid 1000). Host bind-mount
+# directories must exist and be writable by uid 1000 - the defaults ship
+# .gitkeep files so they exist with your ownership after clone. Docker
+# creates MISSING bind-mount directories as root; if you point WORKSPACE_DIR
+# at your own project it already exists with your ownership. Nothing on the
+# host is ever chowned by this file. The opencode-data volume needs no init
+# either: docker seeds a fresh volume's content and ownership from the image
+# directory on first use.
 
 services:
-  # One-shot helper: prepares bind mount and volume permissions for appuser
-  # (uid 1000). Skipped automatically once everything is owned correctly.
-  workspace-init:
-    image: alpine:3.20
-    container_name: agent-workspace-init
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        prepare() {
-          path="$$1"
-          owner="$(stat -c %u "$$path")"
-          if [ "$$owner" != "1000" ]; then
-            echo "Preparing $$path for uid 1000 (current owner: $$owner)..."
-            chown -R 1000:1000 "$$path"
-          else
-            echo "$$path already owned by uid 1000."
-          fi
-        }
-        prepare /workspace
-        prepare /data
-        prepare /app/share/opencode-runs
-    volumes:
-      - ${WORKSPACE_DIR:-./workspace}:/workspace
-      - goosetown-data:/data
-      - run-metrics:/app/share/opencode-runs
-    restart: "no"
-
   agent:
-    depends_on:
-      workspace-init:
-        condition: service_completed_successfully
-    build: .
+    build:
+      context: .
+      args:
+        # Match the in-container appuser to the host user, so host bind
+        # mounts (workspace, goosetown-data, share/opencode-runs) are
+        # writable by the agent without any chown on the host.
+        # `make up` / `make build` pass these automatically from id -u/-g;
+        # with plain docker compose, set them in .env or the environment.
+        APP_UID: ${HOST_UID:-1000}
+        APP_GID: ${HOST_GID:-1000}
     image: agent-container:latest
     container_name: agent
     # To run a published image instead of building locally, comment out
@@ -79,12 +72,11 @@ services:
       # Metrics exporter (see scripts/opencode-prometheus-exporter.py)
       OPENCODE_METRICS_ENABLED: ${OPENCODE_METRICS_ENABLED:-1}
       OPENCODE_METRICS_PORT: ${OPENCODE_METRICS_PORT:-9464}
-      # Persist per-run artifacts on the run-metrics volume
+      # Per-run artifacts land on the host (bind mount below)
       OPENCODE_RUN_METRICS_DIR: /app/share/opencode-runs
-      # Keep goosetown working dirs (GUIDES/PLANS/RESEARCH/WORK_LOGS) on a volume.
-      # The entrypoint derives GOOSETOWN_DIR etc. from this value; setting them
-      # here as container env makes them visible to ALL shells (also
-      # non-interactive `docker compose exec bash -c`), not just PID 1.
+      # Goosetown working directories on the host (bind mount below).
+      # Set here as container env so ALL shells see them (also non-interactive
+      # `docker compose exec bash -c`), not just PID 1.
       GOOSETOWN_DATA_DIR: /data
       GOOSETOWN_DIR: /data/goosetown
       GUIDES_DIR: /data/goosetown/GUIDES
@@ -92,20 +84,20 @@ services:
       RESEARCH_DIR: /data/goosetown/RESEARCH
       WORK_LOGS_DIR: /data/goosetown/WORK_LOGS
     volumes:
-      # Project directory the agent works on.
-      # Override in .env: WORKSPACE_DIR=/path/to/your/project
+      # Project directory the agent works on
       - ${WORKSPACE_DIR:-./workspace}:/workspace
-      # OpenCode state: auth.json, sessions, storage (survives restarts;
-      # run `opencode auth login` inside the container once)
+      # Goosetown working directories (GUIDES/PLANS/RESEARCH/WORK_LOGS)
+      - ${GOOSETOWN_DATA_HOST_DIR:-./goosetown-data}:/data
+      # Per-run metrics artifacts (gitignored, inspectable on the host)
+      - ./share/opencode-runs:/app/share/opencode-runs
+      # OpenCode state: auth.json, sessions, storage. Named volume so
+      # credentials do not land in the project directory; docker seeds its
+      # ownership from the image on first use, so appuser can write.
       - opencode-data:/home/appuser/.local/share/opencode
-      # Per-run metrics artifacts consumed by the Prometheus exporter
-      - run-metrics:/app/share/opencode-runs
-      # Goosetown working directories
-      - goosetown-data:/data
       # --- Optional mounts (uncomment as needed) ---
       # Kubernetes cluster access:
       # - ${HOME}/.kube:/home/appuser/.kube:ro
-      # SSH keys for git/gh over ssh (requires UID match with appuser, usually 1000):
+      # SSH keys for git/gh over ssh (requires uid match with appuser, 1000):
       # - ${HOME}/.ssh:/home/appuser/.ssh:ro
     healthcheck:
       # Healthy when the metrics endpoint answers, or when the exporter is
@@ -118,5 +110,3 @@ services:
 
 volumes:
   opencode-data:
-  run-metrics:
-  goosetown-data:

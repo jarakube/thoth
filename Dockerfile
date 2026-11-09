@@ -54,11 +54,21 @@ RUN git config --global user.email "agent@example.com" \
     && git config --global user.name "agent"
 RUN gh config set -h github.com git_protocol ssh
 
-# The ubuntu base image ships a default 'ubuntu' user at uid 1000; remove it
-# and pin appuser to uid 1000 so host bind mounts line up with the common
-# first-host-user uid.
+# The ubuntu base image ships a default 'ubuntu' user at uid 1000. Remove it
+# and create appuser with a configurable uid/gid (default 1000) so host bind
+# mounts line up with the host user running the container:
+#   docker build --build-arg APP_UID=$(id -u) --build-arg APP_GID=$(id -g) .
+# docker compose passes these via HOST_UID/HOST_GID (see docker-compose.yml
+# and the Makefile). A group NAMED appuser always exists (required by the
+# COPY --chown=appuser:appuser lines below); the user's primary gid is APP_GID
+# so files created in bind mounts carry the host group.
+ARG APP_UID=1000
+ARG APP_GID=1000
 RUN userdel -r ubuntu 2>/dev/null || true
-RUN useradd -m -u 1000 -s /bin/bash appuser
+RUN if getent group appuser >/dev/null 2>&1; then true; \
+    elif getent group "$APP_GID" >/dev/null 2>&1; then groupadd appuser; \
+    else groupadd -g "$APP_GID" appuser; fi \
+    && useradd -m -u "$APP_UID" -g "$APP_GID" -s /bin/bash appuser
 
 RUN mkdir -p /home/appuser/.local/share/opencode/skills /home/appuser/.local/share/opencode/repos /home/appuser/.ssh /home/appuser/.config/goosetown
 RUN ssh-keyscan github.com >> /home/appuser/.ssh/known_hosts
