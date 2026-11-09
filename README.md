@@ -58,15 +58,33 @@ Run interactively:
 docker run --rm -it agent
 ```
 
-If you need cluster access, mount your kubeconfig (example):
+### Docker Compose (recommended)
+
+The easiest way to run the container, with persistent volumes for OpenCode
+auth/sessions, run metrics, and goosetown working directories:
 
 ```bash
-docker run --rm -it \
-  -v "$HOME/.kube:/home/appuser/.kube:ro" \
-  agent
+cp .env.example .env   # optional: add provider keys, set WORKSPACE_DIR
+docker compose up -d --build
+docker compose exec agent bash
 ```
 
-With the metrics endpoint exposed:
+- The agent lands in `/workspace` (defaults to `./workspace/`, override with
+  `WORKSPACE_DIR` in `.env`)
+- `opencode auth login` state persists in the `opencode-data` volume across
+  restarts
+- Prometheus metrics at `http://localhost:9464/metrics`
+- One-shot sessions: `docker compose run --rm agent opencode`
+
+If you need cluster access, mount your kubeconfig (uncomment the line in
+`docker-compose.yml`):
+
+```yaml
+volumes:
+  - ${HOME}/.kube:/home/appuser/.kube:ro
+```
+
+With the metrics endpoint exposed (plain docker):
 
 ```bash
 docker run --rm -it \

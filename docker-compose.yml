@@ -1,0 +1,122 @@
+# Docker Compose for easy access to the agent container.
+#
+# Quick start:
+#   cp .env.example .env        # optional: add provider keys, set WORKSPACE_DIR
+#   docker compose up -d --build
+#   docker compose exec agent bash
+#
+# One-shot interactive session (container removed on exit):
+#   docker compose run --rm agent
+#
+# Start OpenCode or goose directly:
+#   docker compose run --rm agent opencode
+#   docker compose run --rm agent goose
+#
+# Prometheus metrics: http://localhost:9464/metrics
+
+services:
+  # One-shot helper: prepares bind mount and volume permissions for appuser
+  # (uid 1000). Skipped automatically once everything is owned correctly.
+  workspace-init:
+    image: alpine:3.20
+    container_name: agent-workspace-init
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        prepare() {
+          path="$$1"
+          owner="$(stat -c %u "$$path")"
+          if [ "$$owner" != "1000" ]; then
+            echo "Preparing $$path for uid 1000 (current owner: $$owner)..."
+            chown -R 1000:1000 "$$path"
+          else
+            echo "$$path already owned by uid 1000."
+          fi
+        }
+        prepare /workspace
+        prepare /data
+        prepare /app/share/opencode-runs
+    volumes:
+      - ${WORKSPACE_DIR:-./workspace}:/workspace
+      - goosetown-data:/data
+      - run-metrics:/app/share/opencode-runs
+    restart: "no"
+
+  agent:
+    depends_on:
+      workspace-init:
+        condition: service_completed_successfully
+    build: .
+    image: agent-container:latest
+    container_name: agent
+    # To run a published image instead of building locally, comment out
+    # `build:` and point `image:` at your registry, e.g.:
+    # image: ghcr.io/<owner>/<repo>:latest
+    init: true
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+    # Interactive bash by default; override with
+    # `docker compose run --rm agent <command>`
+    command: bash
+    restart: unless-stopped
+    ports:
+      - "${OPENCODE_METRICS_PORT:-9464}:${OPENCODE_METRICS_PORT:-9464}"
+    environment:
+      # LLM provider keys (all optional, passed through from .env / shell)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
+      # LiteLLM proxy (used by goose-litellm)
+      CUSTOM_LITELLM_API_KEY: ${CUSTOM_LITELLM_API_KEY:-}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
+      # Goose defaults
+      GOOSE_LLM_PROVIDER: ${GOOSE_LLM_PROVIDER:-custom}
+      GOOSE_LLM_MODEL: ${GOOSE_LLM_MODEL:-mistral-small-latest}
+      # Metrics exporter (see scripts/opencode-prometheus-exporter.py)
+      OPENCODE_METRICS_ENABLED: ${OPENCODE_METRICS_ENABLED:-1}
+      OPENCODE_METRICS_PORT: ${OPENCODE_METRICS_PORT:-9464}
+      # Persist per-run artifacts on the run-metrics volume
+      OPENCODE_RUN_METRICS_DIR: /app/share/opencode-runs
+      # Keep goosetown working dirs (GUIDES/PLANS/RESEARCH/WORK_LOGS) on a volume.
+      # The entrypoint derives GOOSETOWN_DIR etc. from this value; setting them
+      # here as container env makes them visible to ALL shells (also
+      # non-interactive `docker compose exec bash -c`), not just PID 1.
+      GOOSETOWN_DATA_DIR: /data
+      GOOSETOWN_DIR: /data/goosetown
+      GUIDES_DIR: /data/goosetown/GUIDES
+      PLANS_DIR: /data/goosetown/PLANS
+      RESEARCH_DIR: /data/goosetown/RESEARCH
+      WORK_LOGS_DIR: /data/goosetown/WORK_LOGS
+    volumes:
+      # Project directory the agent works on.
+      # Override in .env: WORKSPACE_DIR=/path/to/your/project
+      - ${WORKSPACE_DIR:-./workspace}:/workspace
+      # OpenCode state: auth.json, sessions, storage (survives restarts;
+      # run `opencode auth login` inside the container once)
+      - opencode-data:/home/appuser/.local/share/opencode
+      # Per-run metrics artifacts consumed by the Prometheus exporter
+      - run-metrics:/app/share/opencode-runs
+      # Goosetown working directories
+      - goosetown-data:/data
+      # --- Optional mounts (uncomment as needed) ---
+      # Kubernetes cluster access:
+      # - ${HOME}/.kube:/home/appuser/.kube:ro
+      # SSH keys for git/gh over ssh (requires UID match with appuser, usually 1000):
+      # - ${HOME}/.ssh:/home/appuser/.ssh:ro
+    healthcheck:
+      # Healthy when the metrics endpoint answers, or when the exporter is
+      # intentionally disabled (OPENCODE_METRICS_ENABLED=0).
+      test: ["CMD-SHELL", "curl -sf http://localhost:$${OPENCODE_METRICS_PORT:-9464}/metrics > /dev/null || test \"$$OPENCODE_METRICS_ENABLED\" = 0"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  opencode-data:
+  run-metrics:
+  goosetown-data:

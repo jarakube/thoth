@@ -54,7 +54,11 @@ RUN git config --global user.email "agent@example.com" \
     && git config --global user.name "agent"
 RUN gh config set -h github.com git_protocol ssh
 
-RUN useradd -m appuser
+# The ubuntu base image ships a default 'ubuntu' user at uid 1000; remove it
+# and pin appuser to uid 1000 so host bind mounts line up with the common
+# first-host-user uid.
+RUN userdel -r ubuntu 2>/dev/null || true
+RUN useradd -m -u 1000 -s /bin/bash appuser
 
 RUN mkdir -p /home/appuser/.local/share/opencode/skills /home/appuser/.local/share/opencode/repos /home/appuser/.ssh /home/appuser/.config/goosetown
 RUN ssh-keyscan github.com >> /home/appuser/.ssh/known_hosts

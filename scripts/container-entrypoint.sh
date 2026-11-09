@@ -33,6 +33,21 @@ if [ -n "${GOOSETOWN_DATA_DIR:-}" ]; then
   export PLANS_DIR="${GOOSETOWN_DIR}/PLANS"
   export RESEARCH_DIR="${GOOSETOWN_DIR}/RESEARCH"
   export WORK_LOGS_DIR="${GOOSETOWN_DIR}/WORK_LOGS"
+
+  # Also persist to .bashrc so interactive shells (docker compose exec)
+  # see the same locations; these shells do not inherit PID 1's exports.
+  if [ -f "/home/appuser/.bashrc" ] && ! grep -q "GOOSETOWN_DATA_DIR" /home/appuser/.bashrc 2>/dev/null; then
+    cat >> /home/appuser/.bashrc <<BASHRC_EOF
+
+# Goosetown working directories on a mounted volume
+export GOOSETOWN_DATA_DIR="${GOOSETOWN_DATA_DIR}"
+export GOOSETOWN_DIR="${GOOSETOWN_DIR}"
+export GUIDES_DIR="${GUIDES_DIR}"
+export PLANS_DIR="${PLANS_DIR}"
+export RESEARCH_DIR="${RESEARCH_DIR}"
+export WORK_LOGS_DIR="${WORK_LOGS_DIR}"
+BASHRC_EOF
+  fi
 fi
 
 # Use goose wrapper script from goosetown directory to enable telepathy and wall
