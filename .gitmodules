@@ -1,0 +1,3 @@
+[submodule "goosetown"]
+	path = goosetown
+	url = https://github.com/block/goosetown.git

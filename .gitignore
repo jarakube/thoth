@@ -1,0 +1,3 @@
+share/opencode-runs/*
+!share/opencode-runs/.gitkeep
+build/
