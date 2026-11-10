@@ -440,6 +440,9 @@ notes per agent.
 
 ## Repository notes
 
+- [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt): documentation
+  index and full flattened docs for LLM consumption (per
+  [llmstxt.org](https://llmstxt.org)) - regenerate both when docs change.
 - Every commit must be signed off (DCO): commit with
   `git commit --signoff`, producing a `Signed-off-by: Name <email>`
   trailer matching the commit author. CI rejects unsigned commits.

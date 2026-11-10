@@ -1,0 +1,1628 @@
+# thoth
+
+> Containerized agent environment: OpenCode + goose/goosetown + kubectl, with a Prometheus metrics endpoint, a generic skill pack, and Docker Compose wiring. Maintained and supported by jarakube.eu. This file is the complete documentation flattened for LLM consumption.
+
+## File: README.md
+
+![thoth](https://img.shields.io/badge/maintained%20by-jarakube.eu-blue)
+
+Containerized OpenCode agent environment for Kubernetes and Ceph-focused
+operations, with Goose/Goosetown multi-agent support and a built-in
+Prometheus metrics endpoint for agent runs.
+
+Named after [Thoth](https://en.wikipedia.org/wiki/Thoth), the ancient
+Egyptian deity of wisdom, writing, and knowledge.
+
+### Project purpose
+
+This repository builds a CLI agent image that combines:
+
+- [OpenCode](https://opencode.ai) (`opencode-ai`) for interactive coding/ops workflows
+- [Goose](https://github.com/aaif-goose/goose) + [Goosetown](https://github.com/aaif-goose/goosetown) for multi-agent orchestration
+- `kubectl` for Kubernetes cluster access
+- A small, generic skill pack (currently a Ceph expert skill)
+
+The result is a ready-to-run agent container for infrastructure-heavy tasks
+where Kubernetes and storage knowledge are needed in the same environment.
+
+### Maintainer and support
+
+This project is maintained and supported by
+**[jarakube.eu](https://jarakube.eu)** - the sovereign Kubernetes platform
+by [Jaraco GmbH](https://www.jaraco.de).
+
+- Issues, feature requests, and contributions are welcome via GitHub.
+- Commercial support, hosting, and platform integrations are available
+  through jarakube.eu.
+- The example MCP server used in the docs
+  ([jarakube.eu/mcp](https://jarakube.eu/mcp)) is operated by the same
+  platform.
+
+### What the image contains
+
+| Component | Location in container | Notes |
+|-----------|----------------------|-------|
+| OpenCode | `/usr/local/bin/opencode` | Installed from npm (`opencode-ai@latest`) by default; see below for custom builds |
+| Goose | `/usr/local/bin/goose` | Pinned via `ARG GOOSE_VERSION` (default `v1.50.0`) |
+| Goosetown | `/app/goosetown` | Public [aaif-goose/goosetown](https://github.com/aaif-goose/goosetown) git submodule |
+| kubectl | `/usr/local/bin/kubectl` | v1.36 from pkgs.k8s.io |
+| Skills | `/home/appuser/.config/opencode/skills/` | Everything from repo `skills/` directory |
+| Metrics exporter | `/app/scripts/opencode-prometheus-exporter.py` | Listens on `:9464` |
+| gh CLI | `/usr/bin/gh` | For GitHub workflows from inside the container |
+
+#### Use a custom opencode build
+
+By default the image installs the official `opencode-ai` release from npm. To
+use your own opencode build (e.g. a patched fork):
+
+1. Build the binary (see the [opencode repo](https://github.com/sst/opencode));
+   for the Keycloak-enabled fork use
+   [jaracogmbh/opencode, branch `feature/34733/keycloak-sso-token-expiry-issue`](https://github.com/jaracogmbh/opencode/tree/feature/34733/keycloak-sso-token-expiry-issue)
+   (see [Configure OpenCode to use Keycloak](#configure-opencode-to-use-keycloak)):
+   ```bash
+   git clone --branch feature/34733/keycloak-sso-token-expiry-issue \
+     https://github.com/jaracogmbh/opencode.git
+   cd opencode
+   bun install && bun run build --single
+   ```
+2. Place it at `build/opencode/opencode` in the repository root.
+3. In the `Dockerfile`, comment the `npm install -g opencode-ai@latest` line
+   and uncomment the `COPY build/opencode/opencode ...` line.
+4. `docker build` as usual.
+
+### Build and run
+
+Build:
+
+```bash
+git clone --recurse-submodules <this-repo-url>
+cd thoth
+docker build -t thoth .
+```
+
+Run interactively:
+
+```bash
+docker run --rm -it thoth
+```
+
+#### Docker Compose (recommended)
+
+The easiest way to run the container. User-generated data stays on the host
+filesystem; only OpenCode auth/session state lives in a named volume:
+
+```bash
+cp .env.example .env   # optional: add provider keys, set WORKSPACE_DIR
+make up                # = HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose up -d --build
+make shell             # interactive bash in /workspace
+```
+
+- The agent lands in `/workspace` (defaults to `./workspace/`, override with
+  `WORKSPACE_DIR` in `.env`)
+- All user-generated data stays on the **host filesystem**: workspace and
+  per-run metrics (`./share/opencode-runs/`) are bind mounts you can inspect
+  directly
+- A **goosetown working clone** is created at `workspace/goosetown` on first
+  start (host-visible), and all goosetown env (`GOOSETOWN_DIR`, `GUIDES_DIR`,
+  `PLANS_DIR`, `RESEARCH_DIR`, `WORK_LOGS_DIR`) points into it. Override with
+  `GOOSETOWN_DIR`/`GOOSETOWN_REPO_URL`/`GOOSETOWN_REF` to use your own fork
+  or an existing clone
+- `opencode auth login` state persists in the `opencode-data` named volume
+  across restarts (kept out of the project dir since it holds credentials)
+- Prometheus metrics at `http://localhost:9464/metrics`
+- One-shot sessions: `make run CMD="opencode"` or
+  `docker compose run --rm thoth opencode`
+
+Permissions: the image builds `appuser` with your host uid/gid
+(`APP_UID`/`APP_GID` build args; `make` passes them automatically, plain
+`docker compose` reads `HOST_UID`/`HOST_GID` from `.env` or the
+environment). Host bind-mount directories must exist and be writable by
+that uid - the defaults ship `.gitkeep` files so they exist with your
+ownership after clone. Nothing on the host is ever chowned by compose or
+the container.
+
+If you need cluster access, mount your kubeconfig (uncomment the line in
+`docker-compose.yml`):
+
+```yaml
+volumes:
+  - ${HOME}/.kube:/home/appuser/.kube:ro
+```
+
+With the metrics endpoint exposed (plain docker):
+
+```bash
+docker run --rm -it \
+  -p 9464:9464 \
+  -v "$(pwd):/app" \
+  -v "$HOME/.local/share/opencode/auth.json:/home/appuser/.local/share/opencode/auth.json:ro" \
+  thoth
+```
+
+Then scrape:
+
+```bash
+curl http://127.0.0.1:9464/metrics
+```
+
+### Per-run OpenCode metrics
+
+Use `./scripts/opencode-run-with-metrics.sh` when you need session-scoped token
+and cost reporting instead of global `opencode stats` output.
+
+Example:
+
+```bash
+./scripts/opencode-run-with-metrics.sh \
+  --metrics-dir share/opencode-runs \
+  --title-prefix blogpost-ci \
+  -- --model openai/gpt-5.4 "Reply with exactly OK"
+```
+
+The wrapper:
+
+- creates a unique run title
+- runs `opencode run --format json`
+- captures the emitted `sessionID`
+- exports that exact session with `opencode export`
+- writes raw events, stderr logs, the exported session, and `run-metrics.json`
+  under `share/opencode-runs/<run-title>/`
+
+This avoids mixing usage across multiple sessions or projects and is a better
+fit for CI reporting.
+
+### Prometheus endpoint
+
+The container starts a lightweight Prometheus exporter on `:9464` by default
+and exposes `/metrics`.
+
+The exporter reads the per-run artifacts under `share/opencode-runs/` and
+publishes aggregated metrics such as:
+
+- `opencode_runs_total`
+- `opencode_run_duration_seconds_total`
+- `opencode_tokens_total{token_kind=...}`
+- `opencode_cost_usd_total`
+- `opencode_messages_total{role=...}`
+- `opencode_tool_calls_total{tool=...,status=...}`
+- `opencode_step_finishes_total{reason=...}`
+- `opencode_log_events_total{service=...,status=...,event_type=...}`
+- `opencode_log_tool_failures_total{tool=...,kind=...}`
+- `opencode_log_errors_total{kind=...}`
+
+Configuration:
+
+- `OPENCODE_METRICS_ENABLED=0` disables the exporter
+- `OPENCODE_METRICS_HOST` sets the listen address
+- `OPENCODE_METRICS_PORT` sets the listen port
+- `OPENCODE_RUN_METRICS_DIR` sets the run artifact directory used by both the
+  wrapper and exporter
+
+Minimal Prometheus scrape config:
+
+```yaml
+scrape_configs:
+  - job_name: thoth
+    static_configs:
+      - targets:
+          - localhost:9464
+```
+
+### Skills
+
+See [skills/README.md](skills/README.md) for the full documentation of the
+skill system, including how to add your own skills and how to **map skills
+into the container at runtime** (bind mount, volume, ConfigMap, PVC, derived
+image, or git clone) instead of bundling them into the image.
+
+Quick summary:
+
+```bash
+# development: mount host skills over the bundled ones
+docker run --rm -it \
+  -v "$(pwd)/my-skills:/home/appuser/.config/opencode/skills:ro" \
+  thoth
+```
+
+### Goose / Goosetown
+
+The image also ships [Goose](https://github.com/aaif-goose/goose) and the
+[Goosetown](https://github.com/aaif-goose/goosetown) multi-agent framework:
+
+```bash
+# interactive goose session
+goose session
+
+# goosetown orchestrator (alias: gt)
+goose load source:goosetown-orchestrator
+
+# goose backed by a LiteLLM proxy
+goose-litellm session "Analyze this codebase"
+```
+
+Details:
+
+- [LITELLM_CONFIGURATION.md](LITELLM_CONFIGURATION.md) - configuring the
+  agents against a LiteLLM proxy: goose via the `goose-litellm` wrapper,
+  OpenCode via a custom `openai-compatible` provider (OpenCode has no
+  native litellm provider - it connects to LiteLLM's OpenAI-compatible API)
+- [GOOSETOWN_INTEGRATION.md](GOOSETOWN_INTEGRATION.md) - what the image sets
+  up for goosetown (paths, wrappers, telepathy)
+- `configure-goose.sh` - helper to drive `goose configure` non-interactively
+  inside a running container (`CONTAINER=<name> ./configure-goose.sh`)
+
+#### One config for both agents
+
+OpenCode and goose need the same data to reach an LLM endpoint (URL, API
+key, model list) but store it differently. `scripts/sync-llm-config.sh`
+keeps them in sync from a **single source of truth** - the `LLM_*`
+environment variables - and runs automatically at container start:
+
+```bash
+# .env - configure once, both agents follow
+LLM_ENDPOINT=http://litellm-proxy:4000/v1   # includes /v1
+LLM_MODELS=mistral-small-latest mistral-large-latest
+CUSTOM_LITELLM_API_KEY=sk-...
+```
+
+```bash
+# apply and verify
+docker compose up -d
+docker compose exec thoth opencode models litellm   # OpenCode: litellm/<model> entries
+docker compose exec thoth goose doctor               # goose: "new session · litellm <model>"
+```
+
+The script writes the OpenCode custom provider config
+(`~/.config/opencode/opencode.json`), the goose provider selection
+(`~/.config/goose/config.yaml`, using goose's built-in `litellm`
+provider), and the shared `LITELLM_*` env for goose sessions. Unset
+`LLM_ENDPOINT` = no-op; each agent falls back to its own configuration.
+After changing `LLM_*` in `.env`, restart with `docker compose up -d` to
+re-run the sync. See [LITELLM_CONFIGURATION.md](LITELLM_CONFIGURATION.md)
+for the full variable reference.
+
+#### Keeping the API key out of .env (pass / compose secrets)
+
+The key never needs to live in `.env` or the compose file. Three options:
+
+1. **`pass` (recommended)** - store the key in the standard Unix password
+   store and let `make up` wire it in:
+
+   ```bash
+   pass init <your-gpg-id>
+   pass insert -m llm/thoth-api-key    # paste the key
+
+   make up    # exports the key from pass into the llm_api_key compose secret
+   ```
+
+   The Makefile resolves `PASS_LLM_ENTRY` (default `llm/thoth-api-key`)
+   into a temporary mode-600 file, mounts it as the `llm_api_key` docker
+   compose secret, and deletes the file afterwards. Without pass or the
+   entry, `make up` starts without the secret and falls back to `.env`.
+
+2. **Compose secret via any secret manager** - point `LLM_API_KEY_FILE`
+   in `.env` at a file containing the key (sops, vault, 1password CLI,
+   plain file - your choice). The file is mounted read-only at
+   `/run/secrets/llm_api_key`.
+
+3. **Plain env var** - `CUSTOM_LITELLM_API_KEY` in `.env` (simplest, but
+   visible in `docker inspect` and shell history).
+
+In all cases the sync script reads the key from the env var or the
+secret file and exports it for the agents - it is never written to any
+generated config file (configs only reference the variable).
+
+Goosetown runs as a **working clone inside the workspace**: the container
+entrypoint clones `https://github.com/aaif-goose/goosetown.git` to
+`workspace/goosetown` on first start (skipped if the directory already
+exists), and points `GOOSETOWN_DIR`, `GUIDES_DIR`, `PLANS_DIR`,
+`RESEARCH_DIR` and `WORK_LOGS_DIR` at it. Its working dirs live inside the
+clone (upstream gitignores them), so everything the orchestrator produces
+persists on the host through the workspace bind mount. Use your own fork via
+`GOOSETOWN_REPO_URL`/`GOOSETOWN_REF`, or point `GOOSETOWN_DIR` at an existing
+clone. The image also carries a tooling copy at `/app/goosetown` used as
+fallback for the `goose` telepathy wrapper.
+
+### CI
+
+`.github/workflows/build.yml` builds the image on every push to `main`
+and publishes it to `ghcr.io/<owner>/thoth` using the default
+`GITHUB_TOKEN`. No private registries or secrets are required. Published
+images are also scanned with Trivy (fail on CRITICAL/HIGH findings,
+unfixed only); the scan runs on every push, not on pull requests.
+
+### Configure OpenCode to use Keycloak
+
+> **Note: this requires a custom OpenCode build.** The stock
+> `opencode-ai` release installed by default (via npm) does not include
+> the Keycloak authentication feature - `auth.keycloak` config and
+> `opencode auth login keycloak` come from a patched OpenCode fork. The
+> reference fork with the Keycloak patches is
+> [jaracogmbh/opencode (branch `feature/34733/keycloak-sso-token-expiry-issue`)](https://github.com/jaracogmbh/opencode/tree/feature/34733/keycloak-sso-token-expiry-issue).
+> Clone that branch, build the binary, and place it at
+> `build/opencode/opencode` before building the image (see
+> [Use a custom opencode build](#use-a-custom-opencode-build)); the
+> Dockerfile then uses it instead of the npm release. With the stock
+> npm release, this section does not apply.
+
+OpenCode in this image supports a global Keycloak login plus MCP server
+configs that reuse that bearer token.
+
+1. Add Keycloak defaults to your OpenCode config.
+
+   Use either a project config like `.opencode/opencode.jsonc` or a global
+   config like `~/.config/opencode/opencode.jsonc`:
+
+   ```jsonc
+   {
+     "auth": {
+       "keycloak": {
+         "issuer": "https://sso.example.com/realms/my-realm",
+         "clientId": "opencode-cli",
+         "scope": "openid profile email offline_access"
+       }
+     },
+     "mcp": {
+       "jira": {
+         "type": "remote",
+         "url": "https://mcp.example.com",
+         "auth": {
+           "type": "bearer",
+           "provider": "keycloak"
+         }
+       }
+     }
+   }
+   ```
+
+   You can also provide the Keycloak defaults through environment variables:
+
+   - `OPENCODE_KEYCLOAK_ISSUER`
+   - `OPENCODE_KEYCLOAK_CLIENT_ID`
+   - `OPENCODE_KEYCLOAK_CLIENT_SECRET`
+   - `OPENCODE_KEYCLOAK_SCOPE`
+   - `OPENCODE_KEYCLOAK_REDIRECT_URI`
+
+2. Log into Keycloak once.
+
+   ```bash
+   opencode auth login keycloak
+   ```
+
+   This stores the session in `~/.local/share/opencode/auth.json`.
+
+3. Reuse that login inside the container.
+
+   The simplest workflow is to authenticate on the host, then mount the auth
+   file into the container:
+
+   ```bash
+   docker run --rm -it \
+     -v "$HOME/.local/share/opencode/auth.json:/home/appuser/.local/share/opencode/auth.json:ro" \
+     -v "$HOME/.config/opencode:/home/appuser/.config/opencode:ro" \
+     thoth
+   ```
+
+   This is the recommended path because the default Keycloak callback binds
+   to `127.0.0.1:19877`, which is straightforward on the host but awkward from
+   inside Docker.
+
+4. Verify the stored identity.
+
+   ```bash
+   opencode auth list
+   ```
+
+### MCP servers
+
+Both agents support remote MCP servers (streamable-http). On first start the
+container registers a public example server, `https://jarakube.eu/mcp`
+(Jaraco website content: services, blog posts, categories, Jarakube
+resources), with **both** OpenCode and goose. Opt out with
+`MCP_EXAMPLE_ENABLED=0`, or override name/URL via `MCP_EXAMPLE_NAME` /
+`MCP_EXAMPLE_URL`.
+
+Verify:
+
+```bash
+opencode mcp list    # shows jarakube-website (connected)
+```
+
+See [docs/mcp.md](docs/mcp.md) for adding your own servers to either agent.
+
+### Integrating other agents
+
+The container is a generic environment for CLI coding agents - Claude Code,
+Codex CLI, and Gemini CLI install via npm and run alongside OpenCode and
+goose. All of them share the same skill format (`SKILL.md` with
+name/description frontmatter), so this repo's `skills/` directory maps into
+each one; MCP servers are configured per agent.
+
+See [docs/agents.md](docs/agents.md) for install commands, skills
+locations, MCP config formats, derived-image recipes, and authentication
+notes per agent.
+
+### Repository notes
+
+- [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt): documentation
+  index and full flattened docs for LLM consumption (per
+  [llmstxt.org](https://llmstxt.org)) - regenerate both when docs change.
+- Every commit must be signed off (DCO): commit with
+  `git commit --signoff`, producing a `Signed-off-by: Name <email>`
+  trailer matching the commit author. CI rejects unsigned commits.
+- PR image builds are gated: the Build workflow only builds/pushes a PR's
+  image after the repository owner comments `ready for test` on the PR.
+  Pushes to `main` always build.
+- Add new skills under `skills/<name>/SKILL.md`; they will be copied into the
+  image on build. See [skills/README.md](skills/README.md).
+- The goosetown directory is a git submodule: clone with
+  `--recurse-submodules` and update with `git submodule update --remote`.
+- Review any local credential or key material before publishing images or
+  sharing this repository.
+
+## File: AGENTS.md
+
+Guidance for AI coding agents working on **this repository** (the thoth
+agent container). For how the agents inside the container consume
+AGENTS.md in *your* projects, see
+[docs/agents.md](docs/agents.md#agentsmd-project-instructions).
+
+### Project overview
+
+This repository builds **thoth**, a containerized CLI agent environment:
+OpenCode + goose/goosetown + kubectl, with a Prometheus metrics exporter,
+a generic skill pack, and Docker Compose wiring. It is intended for
+open-source publication - it must contain no private infrastructure
+references. The project is maintained and supported by
+[jarakube.eu](https://jarakube.eu); the example MCP server
+`https://jarakube.eu/mcp` in the docs is an intentional public reference.
+
+### Build and run
+
+- Build requires the host user's uid/gid so bind mounts are writable:
+  `make build` (= `HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose build`)
+- Start: `make up`; shell: `make shell`; one-shot: `make run CMD="opencode --version"`
+- Plain `docker compose up` without HOST_UID/HOST_GID produces a
+  uid-mismatched image; the entrypoint fails fast with a clear error if
+  /workspace is not writable
+- The goosetown directory is a git submodule of
+  https://github.com/aaif-goose/goosetown - clone with
+  `--recurse-submodules`
+
+### Verification
+
+Before committing changes, run what applies:
+
+```bash
+bash -n scripts/container-entrypoint.sh        # entrypoint syntax
+docker compose config --quiet                  # compose validity (from repo root)
+./test-dockerfile.sh                           # Dockerfile sanity checks
+make build                                     # full image build (slow)
+```
+
+For behavioral changes, verify live: `make up`, then
+`docker compose exec -T agent bash -c '...'` (use `-T`; exec with a TTY
+can hang in some environments). Check `docker compose logs agent` for the
+goosetown clone and MCP registration lines.
+
+### Repository structure
+
+- `Dockerfile` - image: ubuntu 26.04, kubectl 1.36, goose (ARG GOOSE_VERSION),
+  opencode from npm (or `build/opencode/opencode` custom binary), goosetown
+  tooling copy at `/app/goosetown`
+- `scripts/container-entrypoint.sh` - startup: workspace writability check,
+  goosetown clone into `$GOOSETOWN_DIR`, example MCP registration, metrics
+  exporter
+- `docker-compose.yml` / `Makefile` - workspace bind mount, opencode-data
+  volume, uid-matched build args
+- `skills/` - OpenCode skills bundled into the image; `docs/` - integration
+  guides (MCP, other agents)
+
+### Conventions
+
+- Keep all user-generated data on the host filesystem (bind mounts), never
+  in anonymous or root-chowned locations. Nothing on the host is ever
+  chowned by the container.
+- The example MCP server URL `https://jarakube.eu/mcp` is an intentional
+  public example; other internal names must not appear anywhere.
+- Before publishing or merging, scan for leaks:
+  `rg -i "pdr-harbor|happy_bardeen|jarakube-jaraco" --hidden -g '!.git' .`
+  Intentional public references that MAY match scans: `jarakube.eu`
+  (maintainer/site/MCP example) and the Jaraco GmbH maintainer credit in
+  the README. Internal infrastructure names must never appear.
+- Docs changes should be verified against the official docs of the tool in
+  question; agent CLI facts (flags, config formats, versions) change often.
+- Commit messages: conventional style, one line summary + body paragraphs
+  (`feat:`, `fix:`, `docs:`, `chore:`).
+- Every commit MUST carry a `Signed-off-by: Name <email>` trailer
+  (DCO, https://developercertificate.org/): commit with
+  `git commit --signoff`. CI rejects unsigned commits.
+- Skills use the agent-skills standard: `<name>/SKILL.md` with `name` and
+  `description` frontmatter.
+- After changing any documentation (README, docs/, skills/README.md),
+  regenerate `llms.txt` and `llms-full.txt`: the index lists each doc
+  with a one-line description; the full file concatenates all docs under
+  `## File: <path>` markers (drop each file's H1, demote other headings
+  by one level, never touch fenced code blocks). Keep both in sync with
+  the docs or the check
+  `rg -c '^## File: ' llms-full.txt` (must equal the doc count) fails.
+
+## File: skills/README.md
+
+This directory contains [OpenCode](https://opencode.ai) skills that are copied
+into the container image at build time.
+
+```
+skills/<skill-name>/SKILL.md   ->  /home/appuser/.config/opencode/skills/<skill-name>/SKILL.md
+```
+
+The `Dockerfile` bundles everything under `skills/` into
+`/home/appuser/.config/opencode/skills/`, which is OpenCode's global skill
+location for the in-container `appuser`.
+
+### What ships in the image
+
+| Skill | Purpose |
+|-------|---------|
+| `ceph` | Production-oriented Ceph expert persona: RADOS, RGW, dynamic bucket sharding, Rook on Kubernetes, OpenStack integration |
+
+The `ceph` skill is intentionally generic: it demonstrates the expected
+`SKILL.md` format (YAML frontmatter with `name` and `description`, followed by
+markdown instructions) without referencing any private infrastructure.
+
+### Adding your own skills
+
+1. Create `skills/<your-skill>/SKILL.md`:
+
+   ```markdown
+   ---
+   name: my-skill
+   description: One-line description of when to use this skill.
+   ---
+
+   # My Skill
+
+   Instructions for the agent ...
+   ```
+
+2. Rebuild the image:
+
+   ```bash
+   docker build -t thoth .
+   ```
+
+3. Verify inside the container:
+
+   ```bash
+   docker run --rm -it agent bash -c 'ls ~/.config/opencode/skills/'
+   ```
+
+### Mapping skills into the container without rebuilding
+
+Build-time bundling is convenient but not the only option. Any of the
+following work at runtime, with no image rebuild:
+
+| Method | How | Best for |
+|--------|-----|----------|
+| **Bind mount** (recommended) | `docker run -v "$(pwd)/my-skills:/home/appuser/.config/opencode/skills:ro" ...` | Development: edit skills on the host, reload instantly |
+| **Volume** | `docker volume create agent-skills` then mount it at `/home/appuser/.config/opencode/skills` | Long-lived skill collections shared across containers |
+| **Kubernetes ConfigMap** | Mount a ConfigMap at `/home/appuser/.config/opencode/skills` (or use ` projected volumes` to combine ConfigMap + image content) | Cluster deployments; version skills via GitOps |
+| **Kubernetes PVC** | Persistent volume mounted at the same path | Large skill packs or skills generated at runtime |
+| **`docker cp`** | `docker cp my-skill running-container:/home/appuser/.config/opencode/skills/` | Quick experimentation in a running container |
+| **Custom `FROM` image** | `FROM thoth:latest` + `COPY my-skills/ /home/appuser/.config/opencode/skills/` | Derived, opinionated images that bake in your skills |
+| **Git clone at startup** | Mount a script/entrypoint hook that clones your skills repo into the skills dir | Keeping skills in their own repository with independent versioning |
+
+#### Notes on Kubernetes mounts
+
+When you mount a ConfigMap or volume over `/home/appuser/.config/opencode/skills`,
+it **shadows** the image-bundled skills. To combine both, use a `projected`
+volume:
+
+```yaml
+volumes:
+  - name: skills
+    projected:
+      sources:
+        - configMap:
+            name: my-extra-skills
+      # image-bundled skills are not directly projectable; for combined
+      # setups, copy the bundled skills into the ConfigMap or use an init
+      # container that merges them into an emptyDir.
+```
+
+A common pattern for merging image skills with dynamic skills:
+
+```yaml
+containers:
+  - name: agent
+    volumeMounts:
+      - name: merged-skills
+        mountPath: /home/appuser/.config/opencode/skills
+initContainers:
+  - name: copy-bundled-skills
+    image: agent:latest
+    command: ["cp", "-r", "/home/appuser/.config/opencode/skills/.", "/skills/"]
+    volumeMounts:
+      - name: merged-skills
+        mountPath: /skills
+```
+
+(Add a second init container or projected source that also writes your
+dynamic skills into `merged-skills`.)
+
+### Keeping private skills out of the open-source image
+
+If you maintain organization-specific skills (internal tooling, private
+repositories, customer systems), keep them in a separate private repository and
+map them into the container at runtime using one of the methods above. Never
+add them to this repository's `skills/` directory - the build copies everything
+it finds there into the public image.
+
+A typical split:
+
+- **Public repo (this one)**: generic skills (`ceph`), image, scripts, docs.
+- **Private repo (yours)**: `skills/<org-skill>/SKILL.md` + supporting files,
+  mounted at runtime or baked into a private `FROM`-derived image.
+
+## File: docs/mcp.md
+
+Both agents in this container support remote MCP servers over the
+streamable-http transport:
+
+- **OpenCode**: `opencode mcp add <name> --url <url>` (stored in the OpenCode
+  config, e.g. `~/.config/opencode/opencode.jsonc`)
+- **Goose**: `mcp_servers` in `~/.config/goose/config.yaml` (or
+  `goose configure` → Add Extension → Remote Extension (Streamable HTTP))
+
+### Example: the Jarakube website MCP server
+
+The container entrypoint registers a public example MCP server for both
+agents on first start (opt-out via `MCP_EXAMPLE_ENABLED=0`):
+
+```
+https://jarakube.eu/mcp
+```
+
+It is operated by [jarakube.eu](https://jarakube.eu), the sovereign
+Kubernetes platform that also maintains and supports this project, and
+serves the Jaraco GmbH website content: services, blog posts, categories,
+and Jarakube platform resources, plus a `draft_email` tool. It requires no
+authentication.
+
+#### What gets configured
+
+OpenCode (via `opencode mcp add`):
+
+```bash
+opencode mcp add jarakube-website --url https://jarakube.eu/mcp
+```
+
+Goose (`~/.config/goose/config.yaml`):
+
+```yaml
+mcp_servers:
+  jarakube-website:
+    url: https://jarakube.eu/mcp
+```
+
+#### Verify
+
+```bash
+# OpenCode: list configured MCP servers and their status
+opencode mcp list
+
+# Goose: check the extension is loaded (requires a configured provider)
+goose doctor
+```
+
+Then ask either agent something like "list the available Jarakube website
+resources" - the MCP tools/resources appear alongside the built-in tools.
+
+### Adding your own MCP servers
+
+#### OpenCode
+
+```bash
+# remote server
+opencode mcp add my-server --url https://mcp.example.com
+
+# remote server with auth header
+opencode mcp add my-server --url https://mcp.example.com \
+  --header "Authorization=Bearer $MY_TOKEN"
+
+# local stdio server
+opencode mcp add my-server --env KEY=value -- my-command arg1
+```
+
+#### Goose
+
+```yaml
+# ~/.config/goose/config.yaml
+mcp_servers:
+  my-server:
+    url: https://mcp.example.com
+    # auth:
+    #   type: bearer   # token from keyring/env
+```
+
+Or interactively: `goose configure` → Add Extension → Remote Extension
+(Streamable HTTP).
+
+### Environment variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `MCP_EXAMPLE_ENABLED` | Set `0` to skip registering the example server | `1` |
+| `MCP_EXAMPLE_NAME` | Name used for the example server registration | `jarakube-website` |
+| `MCP_EXAMPLE_URL` | URL of the example server | `https://jarakube.eu/mcp` |
+
+## File: docs/agents.md
+
+This container ships OpenCode and goose/goosetown, but it is a generic
+tooling environment: any CLI coding agent that runs on Linux and installs
+via npm (or a plain binary) works inside it. This guide shows how to add
+the common agents, where each one loads skills and MCP servers from, and
+how to map your existing `skills/` directory into them.
+
+The general pattern for every agent:
+
+1. Install it in the running container (or bake it into a derived image).
+   Global npm installs need root: `docker compose exec -u root thoth npm i -g <pkg>` (or `make shell`, then `sudo`-style `-u root` exec). The container user `appuser` cannot write `/usr/local/lib/node_modules`.
+2. Point its skills directory at your skills (bind mount, symlink, or
+   copy - see [skills/README.md](../skills/README.md) for the same mapping
+   techniques used for OpenCode).
+3. Register MCP servers in its config (the example
+   [jarakube.eu/mcp](mcp.md) server works with every agent below).
+4. Add an `AGENTS.md` to your project so every agent picks up the same
+   build/test instructions (see below).
+
+### AGENTS.md (project instructions)
+
+[AGENTS.md](https://agents.md) is the open "README for agents" format:
+an `AGENTS.md` file at the repository root gives coding agents build and
+test commands, conventions, and project context. This repo ships one
+(see [AGENTS.md](../AGENTS.md)); agents working *in your workspace* read
+yours the same way.
+
+Each agent loads it as follows:
+
+| Agent | AGENTS.md support |
+|---|---|
+| OpenCode | Native: project `AGENTS.md` (plus global `~/.config/opencode/AGENTS.md`); `/init` scaffolds one. Falls back to `CLAUDE.md` if no `AGENTS.md` exists |
+| Codex CLI | Native: reads `AGENTS.md` from the working directory up to the repo root (nested files supported; nearest wins) |
+| Claude Code | Reads `AGENTS.md` when no `CLAUDE.md`/`CLAUDE.local.md` exists in or above the working directory (v2.1.277+); otherwise import it from `CLAUDE.md` with `@AGENTS.md`, or change the Project instructions setting |
+| Gemini CLI | Via config: `{"context": {"fileName": "AGENTS.md"}}` in `~/.gemini/settings.json` (default file is `GEMINI.md`) |
+| goose | Reads instructions from the goosetown clone's `AGENTS.md` (orchestrator/delegate context) |
+
+Practical tips:
+
+- One repo-level `AGENTS.md` covers OpenCode, Codex, and (with the
+  fallback rule) Claude Code - no per-agent files needed.
+- For Claude Code with an existing `CLAUDE.md`, add an import line so
+  both stay in sync: `See @AGENTS.md for build and test instructions.`
+- Large monorepos: nested `AGENTS.md` files per package; agents read the
+  nearest one.
+
+### Quick reference
+
+| Agent | Install | Skills location | MCP config |
+|---|---|---|---|
+| [OpenCode](https://opencode.ai) | `npm i -g opencode-ai` | `~/.config/opencode/skills/` | `opencode mcp add` |
+| [Claude Code](https://code.claude.com/docs) | `npm i -g @anthropic-ai/claude-code` | `~/.claude/skills/` (personal), `.claude/skills/` (project) | `claude mcp add --transport http <name> <url>` |
+| [Codex CLI](https://developers.openai.com/codex) | `npm i -g @openai/codex` | `~/.agents/skills/` (user), `.agents/skills/` (repo), `/etc/codex/skills` (admin) | `codex mcp add` / `~/.codex/config.toml` |
+| [Gemini CLI](https://geminicli.com/docs) | `npm i -g @google/gemini-cli` | `~/.gemini/skills` | `~/.gemini/settings.json` (`mcpServers`) |
+| [goose](https://github.com/aaif-goose/goose) | preinstalled | goosetown skills (see [goosetown](#goose--goosetown-preinstalled)) | `~/.config/goose/config.yaml` (`mcp_servers`) |
+
+All skill formats above use the same core convention: a directory per
+skill containing a `SKILL.md` with `name` and `description` frontmatter
+(the [agent skills standard](https://agentskills.io)). A skill written
+once in this repo's `skills/` format works for OpenCode, Claude Code,
+Codex, and Gemini CLI - only the directory it lives in differs.
+
+### Claude Code
+
+Install and verify:
+
+```bash
+# as root (appuser cannot write /usr/local/lib/node_modules)
+docker compose exec -u root thoth npm install -g @anthropic-ai/claude-code
+
+# as appuser
+docker compose exec thoth claude --version
+docker compose exec thoth claude /login     # authenticate (Anthropic account or API key)
+```
+
+(Verified with Claude Code 2.1.322 in this container.)
+
+#### Skills
+
+Claude Code loads personal skills from `~/.claude/skills/` and project
+skills from `.claude/skills/` in the working directory. To reuse this
+repo's skills:
+
+```bash
+# personal skills for all projects
+mkdir -p ~/.claude/skills
+cp -r /path/to/repo/skills/* ~/.claude/skills/
+
+# or per-project, versioned in git
+mkdir -p .claude/skills
+cp -r /path/to/repo/skills/ceph .claude/skills/
+```
+
+Or bind-mount them at runtime (host paths, no copy):
+
+```bash
+docker compose run --rm thoth bash -c '
+  mkdir -p ~/.claude/skills
+  cp -r /workspace/.claude-shared/skills/* ~/.claude/skills/ 2>/dev/null || true
+  claude'
+```
+
+#### MCP servers
+
+```bash
+# remote streamable-http server (the example from docs/mcp.md)
+claude mcp add --transport http jarakube-website https://jarakube.eu/mcp
+
+# with an auth header
+claude mcp add --transport http my-server https://mcp.example.com \
+  --header "Authorization: Bearer $MY_TOKEN"
+
+# local stdio server
+claude mcp add --env API_KEY=xxx --transport stdio my-tool -- npx -y some-mcp-server
+
+claude mcp list    # verify
+```
+
+Config lives in `~/.claude.json` (local scope by default; `--scope user`
+for all projects, `--scope project` writes `.mcp.json`).
+
+### Codex CLI
+
+Install and verify (global install needs root, see above):
+
+```bash
+docker compose exec -u root thoth npm install -g @openai/codex
+docker compose exec thoth codex --version
+docker compose exec thoth codex login      # ChatGPT account or API key
+```
+
+#### Skills
+
+Codex scans (closest first, all loaded in parallel):
+
+- `$CWD/.agents/skills` and parents up to the repo root (repo scope)
+- `~/.agents/skills` (user scope - applies to every project)
+- `/etc/codex/skills` (admin scope - useful for baking skills into
+  derived container images)
+
+```bash
+# user-scope skills
+mkdir -p ~/.agents/skills
+cp -r /path/to/repo/skills/* ~/.agents/skills/
+
+# admin scope inside a derived image (Dockerfile):
+# COPY skills/ /etc/codex/skills/
+```
+
+#### MCP servers
+
+```bash
+# stdio server
+codex mcp add my-tool -- npx -y some-mcp-server
+
+# verify
+codex mcp list
+```
+
+Remote (streamable-http) servers go in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.jarakube-website]
+url = "https://jarakube.eu/mcp"
+```
+
+### Gemini CLI
+
+Install and verify (global install needs root, see above):
+
+```bash
+docker compose exec -u root thoth npm install -g @google/gemini-cli
+docker compose exec thoth gemini --version
+docker compose exec thoth gemini           # OAuth login on first start, or export GEMINI_API_KEY
+```
+
+Note: since June 2026 Google points free-tier / Google AI accounts at the
+Antigravity CLI; `@google/gemini-cli` remains the open-source CLI for
+Gemini Code Assist (Standard/Enterprise) and API-key/Vertex usage.
+
+#### Skills
+
+Gemini CLI loads skills from `~/.gemini/skills` (user) and a `.gemini/skills`
+directory in the project. Same `SKILL.md` convention:
+
+```bash
+mkdir -p ~/.gemini/skills
+cp -r /path/to/repo/skills/* ~/.gemini/skills/
+```
+
+#### MCP servers
+
+`~/.gemini/settings.json`:
+
+```json
+{
+  "mcpServers": {
+    "jarakube-website": {
+      "httpUrl": "https://jarakube.eu/mcp"
+    }
+  }
+}
+```
+
+(`url` is the SSE transport key; `httpUrl` is streamable-http. Recent
+versions also have `gemini mcp add`.) Verify with `/mcp` inside a session.
+
+### goose / goosetown (preinstalled)
+
+goose is already installed; goosetown is cloned into the workspace at
+`$GOOSETOWN_DIR` (default `/workspace/goosetown`) on first start, and all
+goosetown env points there. Its skills live in the clone (goosetown uses
+`.claude/skills/` inside its repo for its orchestrator/delegate skills).
+
+Add remote MCP servers to `~/.config/goose/config.yaml`:
+
+```yaml
+mcp_servers:
+  jarakube-website:
+    url: https://jarakube.eu/mcp
+```
+
+(The container entrypoint writes this example server automatically - see
+[docs/mcp.md](mcp.md).)
+
+### Baking agents into a derived image
+
+For repeatable setups, extend the image instead of installing ad hoc:
+
+```dockerfile
+FROM thoth:latest
+
+# extra agents
+RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli
+
+# skills shared by all agents (Codex admin scope; symlink for the others)
+COPY skills/ /etc/codex/skills/
+RUN mkdir -p /home/appuser/.claude/skills /home/appuser/.agents/skills \
+    && ln -sf /etc/codex/skills/* /home/appuser/.claude/skills/ \
+    && ln -sf /etc/codex/skills/* /home/appuser/.agents/skills/
+
+# pre-register MCP servers
+RUN printf 'mcp_servers:\n  jarakube-website:\n    url: https://jarakube.eu/mcp\n' \
+    > /home/appuser/.config/goose/config.yaml
+```
+
+Build and run:
+
+```bash
+docker build -t my-agent-stack .
+docker run --rm -it -v "$(pwd)/workspace:/workspace" my-agent-stack
+```
+
+### Authentication notes
+
+- Each agent authenticates independently (OAuth login or API key env
+  vars: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, ...).
+- OAuth callbacks bind to `localhost` on the host; inside the container
+  use API-key auth, or authenticate on the host and mount the agent's
+  credentials (the same pattern the README shows for OpenCode's
+  `auth.json`).
+- Agent credentials live under each agent's home directory
+  (`~/.claude`, `~/.codex`, `~/.gemini`). To persist them across
+  container restarts, add a compose volume for `~/.agents-credentials`
+  style state or mount the whole `~/.config`/dotfiles tree.
+
+## File: LITELLM_CONFIGURATION.md
+
+This document explains how to configure the agents in this container to use
+**LiteLLM** as the LLM provider.
+
+### Overview
+
+[LiteLLM](https://litellm.ai/) is a proxy server that allows you to use 100+ LLMs (OpenAI, Anthropic, Google, Mistral, Local models via Ollama, etc.) with a unified OpenAI-compatible API. Since LiteLLM speaks the OpenAI API format, agents connect to it the same way they connect to any OpenAI-compatible endpoint - there is no "litellm" provider type in either OpenCode or goose.
+
+- **goose**: configured via the LiteLLM config file and the `goose-litellm`
+  wrapper described below.
+- **OpenCode**: configured as a custom provider using the
+  `openai-compatible` runtime package - see
+  [Using LiteLLM with OpenCode](#using-litellm-with-opencode) below.
+
+### Keeping both in sync
+
+Both agents need the same data (endpoint URL, API key, model list), so
+this container configures them from a **single source of truth**: the
+`LLM_*` environment variables. `scripts/sync-llm-config.sh` runs at
+container start and writes both configs:
+
+| Source of truth (env) | OpenCode (generated) | goose (generated) |
+|---|---|---|
+| `LLM_ENDPOINT` (incl. `/v1`) | `provider.litellm.options.baseURL` in `~/.config/opencode/opencode.json` | `LITELLM_HOST` + `LITELLM_BASE_PATH` in `~/.config/goose/set-env.sh` |
+| `LLM_API_KEY_ENV` (default `CUSTOM_LITELLM_API_KEY`) | `provider.litellm.options.apiKey` (`{env:...}` reference) | `LITELLM_API_KEY` (same env reference) |
+| `LLM_MODELS` | `provider.litellm.models` map | `GOOSE_MODEL` default (first entry) |
+| `LLM_DEFAULT_MODEL` (default: first of `LLM_MODELS`) | top-level `model` (`litellm/<id>`, only when unset) | `GOOSE_MODEL` in `config.yaml` |
+
+The script also sets `GOOSE_PROVIDER: litellm` in
+`~/.config/goose/config.yaml` (using goose's built-in litellm provider)
+unless a provider is already configured, and hooks the generated env into
+`~/.bashrc` so interactive shells see it.
+
+Behavior:
+
+- Unset `LLM_ENDPOINT` → no-op; both agents fall back to their own
+  configuration (goose via `goose-litellm`, OpenCode via `/connect`).
+- Re-running is safe: OpenCode's `provider.litellm` entry is regenerated
+  (user's other config keys preserved), goose's `GOOSE_MODEL` updated in
+  place.
+- After changing `LLM_*` in `.env`, restart the container
+  (`docker compose up -d`) to re-run the sync.
+
+#### API key resolution (pass / secrets)
+
+The key is resolved in this order (first hit wins):
+
+1. The env var named by `LLM_API_KEY_ENV` (e.g. `CUSTOM_LITELLM_API_KEY`)
+2. The docker compose secret file `/run/secrets/llm_api_key` - mounted
+   from `LLM_API_KEY_FILE` on the host
+
+For `pass` users, `make up` handles this automatically: it runs
+`pass show $PASS_LLM_ENTRY` (default entry `llm/thoth-api-key`), writes
+the first line to a temporary mode-600 file, exports it as
+`LLM_API_KEY_FILE` for the compose secret, and removes the file when
+done. The key therefore exists only in the pass store, the short-lived
+temp file, and the container's secret mount - never in `.env`, the
+compose file, the image, or any generated config (both configs reference
+the env var, they never embed the key).
+
+### What's Included (goose)
+
+The Dockerfile includes:
+
+1. **LiteLLM Configuration File** (`/home/appuser/.config/goose/litellm-config.yaml`)
+   - Pre-configured models for Mistral (default), OpenAI, Anthropic, and Google
+   - Environment variable placeholders for API keys
+   - Default fallback models
+
+2. **Wrapper Script** (`/usr/local/bin/goose-litellm`)
+   - Automatically sets up environment for LiteLLM
+   - Provides goose with LiteLLM support
+   - Easy to use command: `goose-litellm`
+
+3. **Environment Variables**
+   - `GOOSE_LLM_PROVIDER` - Set the LLM provider (e.g., "mistral", "openai", "anthropic")
+   - `GOOSE_LLM_MODEL` - Set the specific model to use
+   - Standard API key environment variables for each provider
+
+### Supported Providers
+
+The configuration includes support for:
+
+| Provider | Models | Environment Variable |
+|----------|--------|---------------------|
+| **OpenAI** | gpt-4, gpt-3.5-turbo | `OPENAI_API_KEY` |
+| **Anthropic** | claude-3-opus, claude-3-sonnet | `ANTHROPIC_API_KEY` |
+| **Google** | gemini-pro | `GEMINI_API_KEY` |
+| **Mistral** | mistral-small, mistral-large | `MISTRAL_API_KEY` |
+| **Ollama** | llama3, other local models | `OLLAMA_API_BASE` |
+
+### Quick Start
+
+`CUSTOM_LITELLM_API_KEY` is required and must be set before using the LiteLLM-backed Goose commands.
+
+#### Method 1: Using Environment Variables (Recommended)
+
+```bash
+# Required for LiteLLM access
+export CUSTOM_LITELLM_API_KEY="your-litellm-key"
+
+# Set your API keys
+export OPENAI_API_KEY="your-openai-key"
+export ANTHROPIC_API_KEY="your-anthropic-key"
+
+# Choose provider and model
+export GOOSE_LLM_PROVIDER="openai"
+export GOOSE_LLM_MODEL="gpt-4"
+
+# Run goose with LiteLLM support
+goose-litellm session "Analyze this codebase"
+```
+
+#### Method 2: Using the Wrapper Script
+
+```bash
+# Run goose with default LiteLLM configuration
+goose-litellm session "Help me debug this Python code"
+```
+
+#### Method 3: Direct goose Usage
+
+```bash
+# Set environment variables
+export OPENAI_API_KEY="your-key"
+
+# Run goose directly (it will use LiteLLM if configured)
+goose session "Review my Dockerfile"
+```
+
+### Configuration Files
+
+#### LiteLLM Config File
+Location: `/home/appuser/.config/goose/litellm-config.yaml`
+
+This file contains:
+- Model definitions with provider-specific parameters
+- Environment variable placeholders for API keys
+- Default settings for LiteLLM
+
+You can customize this file to add more models or change settings.
+
+#### Environment Setup
+Location: `/home/appuser/.config/goose/set-env.sh` (created when you run the config script)
+
+This script sets up environment variables based on your API keys.
+
+### Advanced Configuration
+
+#### Adding Custom Models
+
+Edit `/home/appuser/.config/goose/litellm-config.yaml`:
+
+```yaml
+model_list:
+  - model_name: "my-custom-model"
+    litellm_params:
+      model: "custom-provider/custom-model-name"
+      api_key: "${CUSTOM_API_KEY:-}"
+      api_base: "${CUSTOM_API_BASE:-https://api.custom.com/v1}"
+      other_param: "value"
+```
+
+#### Using Local Models (Ollama)
+
+```bash
+# Start Ollama
+docker run -d -p 11434:11434 --name ollama ollama/ollama
+
+# Pull a model
+curl -X POST http://localhost:11434/api/pull -d '{"name": "llama3"}'
+
+# Set environment variables
+export OLLAMA_API_BASE="http://localhost:11434"
+
+# Configure goose to use local model
+export GOOSE_LLM_PROVIDER="ollama"
+export GOOSE_LLM_MODEL="llama3"
+
+goose-litellm session "Explain this code"
+```
+
+#### Multiple Providers with Fallback
+
+LiteLLM supports routing strategies and fallback models. You can configure this in the YAML file:
+
+```yaml
+general_settings:
+  default_fallback_models:
+    - "mistral-large"
+    - "mistral-small"
+
+router_settings:
+  routing_strategy: "usage-based"
+  enable_tag_filtering: true
+```
+
+### Environment Variables Reference
+
+#### Provider-Specific Variables
+
+| Provider | API Key Variable | Model Variable | API Base Variable |
+|----------|------------------|----------------|-------------------|
+| OpenAI | `OPENAI_API_KEY` | `OPENAI_MODEL` | `OPENAI_API_BASE` |
+| Anthropic | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` | N/A |
+| Google | `GEMINI_API_KEY` | `GEMINI_MODEL` | N/A |
+| Mistral | `MISTRAL_API_KEY` | `MISTRAL_MODEL` | N/A |
+| Ollama | N/A | `OLLAMA_MODEL` | `OLLAMA_API_BASE` |
+
+#### Goose-Specific Variables
+
+| Variable | Description | Default Value |
+|----------|-------------|---------------|
+| `GOOSE_LLM_PROVIDER` | LLM provider to use | `mistral` |
+| `GOOSE_LLM_MODEL` | Specific model to use | `mistral-small-latest` |
+| `LITELLM_CONFIG_FILE` | Path to LiteLLM config | `/home/appuser/.config/goose/litellm-config.yaml` |
+
+#### LiteLLM-Specific Variables
+
+| Variable | Description | Default Value |
+|----------|-------------|---------------|
+| `CUSTOM_LITELLM_API_KEY` | Required API key for LiteLLM access | (required) |
+| `LITELLM_MASTER_KEY` | Master key for LiteLLM | (empty) |
+| `LITELLM_DATABASE_URL` | Database connection string | `sqlite:///./litellm.db` |
+| `REDIS_URL` | Redis connection string | (empty) |
+
+### Troubleshooting
+
+#### Issue: "Model not found"
+
+**Solution**: Make sure the model name in your environment variable matches one of the configured models in the YAML file.
+
+```bash
+# Wrong
+export GOOSE_LLM_MODEL="gpt-4o"
+
+# Correct
+export GOOSE_LLM_MODEL="gpt-4"
+```
+
+#### Issue: "API key not set"
+
+**Solution**: Export `CUSTOM_LITELLM_API_KEY` and the required provider API key environment variable.
+
+```bash
+# Required for LiteLLM
+export CUSTOM_LITELLM_API_KEY="your-litellm-key"
+
+# For OpenAI
+export OPENAI_API_KEY="sk-..."
+
+# For Anthropic
+export ANTHROPIC_API_KEY="sk-ant-..."
+```
+
+#### Issue: "LiteLLM not working"
+
+**Solution**: Verify that goose is installed and the wrapper script exists:
+
+```bash
+ls -la /usr/local/bin/goose-litellm
+which goose
+```
+
+#### Issue: "Connection refused"
+
+**Solution**: Check that your API base URL is correct:
+
+```bash
+# For custom providers
+export OPENAI_API_BASE="https://api.openai.com/v1"
+```
+
+### Examples
+
+#### Example 1: Using OpenAI GPT-4
+
+```bash
+# Set API key
+export OPENAI_API_KEY="sk-your-openai-key-here"
+
+# Configure goose
+export GOOSE_LLM_PROVIDER="openai"
+export GOOSE_LLM_MODEL="gpt-4"
+
+# Run goose
+goose-litellm session "Review this Kubernetes deployment YAML"
+```
+
+#### Example 2: Using Anthropic Claude 3 Opus
+
+```bash
+# Set API key
+export ANTHROPIC_API_KEY="sk-ant-your-anthropic-key-here"
+
+# Configure goose
+export GOOSE_LLM_PROVIDER="anthropic"
+export GOOSE_LLM_MODEL="claude-3-opus"
+
+# Run goose
+goose-litellm session "Explain this complex algorithm"
+```
+
+#### Example 3: Using Local Ollama Model
+
+```bash
+# Start Ollama (if not running)
+docker run -d -p 11434:11434 --name ollama ollama/ollama
+
+# Pull a model
+curl -X POST http://localhost:11434/api/pull -d '{"name": "llama3"}'
+
+# Configure goose
+export GOOSE_LLM_PROVIDER="ollama"
+export GOOSE_LLM_MODEL="llama3"
+
+# Run goose
+goose-litellm session "Help me understand this Python code"
+```
+
+#### Example 4: Multi-Provider with Fallback
+
+```bash
+# Set multiple API keys
+export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GEMINI_API_KEY="..."
+
+# Configure LiteLLM config for fallback
+export GOOSE_LLM_PROVIDER="mistral"
+
+# Run goose - it will use the best available model
+goose-litellm session "Analyze this entire codebase"
+```
+
+### Performance Tips
+
+1. **Use smaller models** for quick tasks (mistral-small, gpt-3.5-turbo)
+2. **Use larger models** for complex analysis (claude-3-opus, gpt-4)
+3. **Set up caching** with LiteLLM to reduce API costs
+4. **Use local models** for privacy-sensitive code
+5. **Monitor usage** with LiteLLM's built-in dashboard
+
+### Security Considerations
+
+✅ **Secure by default**:
+- API keys are not hardcoded in the container
+- Keys are passed via environment variables
+- Configuration files are owned by appuser
+- No sensitive data is stored in the image
+
+🔒 **Best Practices**:
+- Use Kubernetes secrets or Docker secrets for production
+- Rotate API keys regularly
+- Use different keys for different environments
+- Never commit API keys to version control
+
+### Integration with Goosetown
+
+When using goose with goosetown, the LiteLLM configuration works seamlessly:
+
+```bash
+# Start goosetown orchestrator
+goose load source:goosetown-orchestrator
+
+# Configure goose first
+export OPENAI_API_KEY="your-key"
+export GOOSE_LLM_PROVIDER="openai"
+
+# Then agents will use LiteLLM automatically
+```
+
+### Using LiteLLM with OpenCode
+
+OpenCode has no native "litellm" provider - and it does not need one.
+LiteLLM exposes an OpenAI-compatible API, so OpenCode connects to it as a
+custom provider using the `@ai-sdk/openai-compatible` package.
+
+Add this to `~/.config/opencode/opencode.json` (global) or `opencode.json`
+in your project:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "litellm/mistral-small-latest",
+  "provider": {
+    "litellm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LiteLLM Proxy",
+      "options": {
+        "baseURL": "http://litellm-proxy:4000/v1",
+        "apiKey": "{env:CUSTOM_LITELLM_API_KEY}"
+      },
+      "models": {
+        "mistral-small-latest": { "name": "Mistral Small (via LiteLLM)" },
+        "mistral-large-latest": { "name": "Mistral Large (via LiteLLM)" }
+      }
+    }
+  }
+}
+```
+
+Notes:
+
+- `npm` selects the OpenAI-compatible runtime package; LiteLLM speaks the
+  OpenAI API format, so no litellm-specific package is needed.
+- `options.apiKey` reads the credential from the `CUSTOM_LITELLM_API_KEY`
+  environment variable via the `{env:...}` placeholder (this container's
+  compose setup passes that variable). Alternatively run `/connect` and
+  pick the `litellm` provider to store the key in `auth.json`.
+- `options.baseURL` must point at the LiteLLM proxy's `/v1` endpoint.
+  Adjust the host to wherever your proxy runs (`http://localhost:4000/v1`
+  when the proxy runs on the same machine, `http://host.docker.internal:4000/v1`
+  from inside a container, a service name on a Docker network, etc.).
+- Each key under `models` must match an ID the proxy's `GET /v1/models`
+  returns; the reference format is `litellm/<model-id>`
+  (e.g. `litellm/mistral-small-latest`).
+
+Verify inside the container:
+
+```bash
+opencode models litellm
+opencode run --model litellm/mistral-small-latest "Reply with OK"
+```
+
+(Verified with OpenCode 1.19.5: the provider appears in
+`opencode models litellm` and requests route to the configured baseURL.)
+
+> **OpenCode V2**: if you upgrade to OpenCode V2, the config schema
+> changes to `providers` (plural) with a `package` field instead of
+> `npm`:
+>
+> ```jsonc
+> {
+>   "providers": {
+>     "litellm": {
+>       "name": "LiteLLM Proxy",
+>       "env": ["CUSTOM_LITELLM_API_KEY"],
+>       "package": "@opencode/ai/providers/openai-compatible",
+>       "settings": { "baseURL": "http://litellm-proxy:4000/v1" },
+>       "models": { "mistral-small-latest": { "name": "Mistral Small (via LiteLLM)" } }
+>     }
+>   }
+> }
+> ```
+
+### Documentation References
+
+- [LiteLLM Official Documentation](https://docs.litellm.ai/)
+- [Goose Documentation](https://goose-docs.ai/)
+- [Goose GitHub Repository](https://github.com/aaif-goose/goose)
+- [LiteLLM GitHub Repository](https://github.com/BerriAI/litellm)
+- [OpenCode Providers Documentation](https://opencode.ai/docs/providers/) (custom providers / `openai-compatible` package)
+
+### Support
+
+If you encounter issues with LiteLLM configuration:
+
+1. Check the LiteLLM logs: `docker logs litellm`
+2. Verify API keys are correct
+3. Test LiteLLM directly: `curl http://localhost:4000/chat/completions`
+4. Check goose configuration: `goose doctor`
+
+---
+
+**Status**: ✅ **COMPLETE**
+**Date**: 2026-09-04
+**Configuration**: Ready for use with all major LLM providers
+
+## File: GOOSETOWN_INTEGRATION.md
+
+This document describes the changes made to integrate goose and goosetown into the coding agent container.
+
+### Changes Made
+
+#### 1. Updated Dockerfile
+
+The main Dockerfile (`Dockerfile`) has been updated to include goose and goosetown support.
+
+##### Added Dependencies:
+- `python3-yaml` - Required by goosetown
+- `pipx` - For Python package management
+- `wget` - For downloading goose binary
+- `unzip` - For extracting packages
+
+##### Added goose Binary Installation:
+```dockerfile
+# Current Dockerfile installs goose via scripts/install-goose.sh from the
+# GitHub releases (asset naming: goose-<arch>-unknown-linux-gnu.tar.bz2):
+# https://github.com/aaif-goose/goose/releases
+ARG GOOSE_VERSION=v1.50.0
+COPY --chmod=755 scripts/install-goose.sh /usr/local/bin/install-goose.sh
+RUN GOOSE_VERSION=${GOOSE_VERSION} GOOSE_BIN_DIR=/usr/local/bin \
+    /usr/local/bin/install-goose.sh && /usr/local/bin/goose --version
+```
+
+##### Added goosetown Directory:
+```dockerfile
+# Install goosetown
+RUN mkdir -p /app/goosetown
+COPY goosetown/ /app/goosetown/
+```
+
+##### Added goosetown Scripts for appuser:
+```dockerfile
+# Copy goosetown scripts for appuser
+COPY --chown=appuser:appuser goosetown/goose_gui /usr/local/bin/goose_gui
+COPY --chown=appuser:appuser goosetown/gtwall /usr/local/bin/gtwall
+COPY --chown=appuser:appuser goosetown/dashboard /usr/local/bin/goosetown-dashboard
+```
+
+##### Added Environment Setup:
+```dockerfile
+# NOTE: GOOSETOWN_DIR is set by the container entrypoint, which clones a
+# goosetown working repository into the workspace and points GOOSETOWN_DIR
+# (plus GUIDES_DIR/PLANS_DIR/RESEARCH_DIR/WORK_LOGS_DIR) at it. The image
+# copy at /app/goosetown is a tooling fallback only.
+RUN echo 'export PATH="/usr/local/bin:$PATH"' >> /home/appuser/.bashrc
+```
+
+##### Updated File Permissions:
+```dockerfile
+RUN chown -R appuser:appuser /home/appuser/.local /home/appuser/.ssh /home/appuser/.config /app/goosetown /app/scripts
+```
+
+### What This Enables
+
+With these changes, the coding agent container now includes:
+
+1. **goose CLI** - The AI agent framework from the [Agentic AI Foundation](https://github.com/aaif-goose/goose)
+   - Available at `/usr/local/bin/goose`
+   - Can be invoked directly or via the entrypoint
+
+2. **goosetown** - The multi-agent coordination framework
+   - Located at `/app/goosetown`
+   - Includes all goosetown scripts (goose, goose_gui, gtwall, dashboard)
+   - Environment variables are set for easy access
+
+3. **Telepathy Support** - Enables orchestrator → delegate communication
+   - The goose wrapper creates telepathy files for session-based communication
+   - Wall files for inter-agent communication
+
+### Usage Examples
+
+#### Running goose directly:
+```bash
+./goose session
+```
+
+#### Running goosetown orchestrator:
+```bash
+./goose load source:goosetown-orchestrator
+```
+
+#### Using gtwall for communication:
+```bash
+./gtwall --usage
+```
+
+### Backward Compatibility
+
+The changes maintain backward compatibility:
+- The default CMD is still `opencode`
+- The entrypoint script remains unchanged
+- Existing workflows continue to work
+- New functionality is additive only
+
+### Testing
+
+To test the integration:
+
+1. Build the container:
+   ```bash
+   docker build -t thoth .
+   ```
+
+2. Run the container:
+   ```bash
+   docker run -it thoth bash
+   ```
+
+3. Verify goose is available:
+   ```bash
+   goose --version
+   ```
+
+4. Verify goosetown files are present:
+   ```bash
+   ls -la /app/goosetown/
+   ```
+
+5. Test telepathy:
+   ```bash
+   ./goose doctor
+   ```
+
+### Notes
+
+- The goose binary is downloaded from GitHub releases (v1.25.0)
+- goosetown is copied from the local directory structure
+- Python dependencies for goosetown can be installed using pipx by users as needed
+- The integration follows the existing container structure and patterns

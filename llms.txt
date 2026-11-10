@@ -1,0 +1,31 @@
+# thoth
+
+> Containerized agent environment: OpenCode + goose/goosetown + kubectl,
+> with a Prometheus metrics endpoint, a generic skill pack, and Docker
+> Compose wiring. Maintained and supported by jarakube.eu.
+
+thoth is a ready-to-run CLI agent container for infrastructure-heavy work
+where Kubernetes and storage knowledge are needed in the same
+environment. One shared LLM configuration feeds both OpenCode and goose;
+API keys can come from `pass` via docker compose secrets.
+
+## Docs
+
+- [README](https://github.com/jarakube/thoth/blob/main/README.md): project overview, build/run (docker compose + Makefile), metrics endpoint, skills, goose/goosetown, MCP, CI, Keycloak notes
+- [AGENTS.md](https://github.com/jarakube/thoth/blob/main/AGENTS.md): guidance for AI coding agents working on this repository (build/verify commands, conventions, DCO)
+- [Skills](https://github.com/jarakube/thoth/blob/main/skills/README.md): the skill system - SKILL.md format, mapping skills into the container at runtime (bind mount, volume, ConfigMap, derived image), keeping private skills out
+- [MCP servers](https://github.com/jarakube/thoth/blob/main/docs/mcp.md): remote MCP servers for both agents; the jarakube.eu/mcp example; adding your own servers
+- [Integrating other agents](https://github.com/jarakube/thoth/blob/main/docs/agents.md): Claude Code, Codex CLI, Gemini CLI - install commands, skills locations, AGENTS.md support matrix, MCP config formats, derived-image recipes
+- [LiteLLM configuration](https://github.com/jarakube/thoth/blob/main/LITELLM_CONFIGURATION.md): single-source LLM config for both agents (LLM_* env), pass/compose-secret key handling, OpenCode openai-compatible provider wiring
+- [Goosetown integration](https://github.com/jarakube/thoth/blob/main/GOOSETOWN_INTEGRATION.md): what the image sets up for goose/goosetown (paths, wrappers, telepathy)
+
+## Examples
+
+- [docker-compose.yml](https://github.com/jarakube/thoth/blob/main/docker-compose.yml): full stack wiring - workspace bind mount, opencode-data volume, LLM_* passthrough, llm_api_key secret, healthcheck
+- [Makefile](https://github.com/jarakube/thoth/blob/main/Makefile): uid-matched build (make up), pass key loading, shell/run/logs targets
+- [.env.example](https://github.com/jarakube/thoth/blob/main/.env.example): all configuration variables, commented
+- [docker build (CI)](https://github.com/jarakube/thoth/blob/main/.github/workflows/build.yml): ghcr.io publish, owner-gated PR builds, Trivy digest scan
+
+## Optional
+
+- [DCO policy](https://github.com/jarakube/thoth/blob/main/.github/workflows/dco.yml): every commit needs a Signed-off-by trailer

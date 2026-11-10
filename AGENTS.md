@@ -77,3 +77,10 @@ goosetown clone and MCP registration lines.
   `git commit --signoff`. CI rejects unsigned commits.
 - Skills use the agent-skills standard: `<name>/SKILL.md` with `name` and
   `description` frontmatter.
+- After changing any documentation (README, docs/, skills/README.md),
+  regenerate `llms.txt` and `llms-full.txt`: the index lists each doc
+  with a one-line description; the full file concatenates all docs under
+  `## File: <path>` markers (drop each file's H1, demote other headings
+  by one level, never touch fenced code blocks). Keep both in sync with
+  the docs or the check
+  `rg -c '^## File: ' llms-full.txt` (must equal the doc count) fails.
