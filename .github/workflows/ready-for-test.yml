@@ -35,6 +35,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # GH_REPO makes every gh command target this repository
+          # without git-based auto-detection - this workflow has no
+          # checkout step (it needs no code), so `gh run list` would
+          # otherwise fail with "not a git repository".
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
