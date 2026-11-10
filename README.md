@@ -232,8 +232,10 @@ goose-litellm session "Analyze this codebase"
 
 Details:
 
-- [LITELLM_CONFIGURATION.md](LITELLM_CONFIGURATION.md) - configuring goose
-  against a LiteLLM proxy (provider/model env vars, fallbacks, Ollama)
+- [LITELLM_CONFIGURATION.md](LITELLM_CONFIGURATION.md) - configuring the
+  agents against a LiteLLM proxy: goose via the `goose-litellm` wrapper,
+  OpenCode via a custom `openai-compatible` provider (OpenCode has no
+  native litellm provider - it connects to LiteLLM's OpenAI-compatible API)
 - [GOOSETOWN_INTEGRATION.md](GOOSETOWN_INTEGRATION.md) - what the image sets
   up for goosetown (paths, wrappers, telepathy)
 - `configure-goose.sh` - helper to drive `goose configure` non-interactively

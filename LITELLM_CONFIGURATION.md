@@ -1,17 +1,24 @@
-# LiteLLM Configuration for Goose
+# LiteLLM Configuration
 
-This document explains how to configure goose to use **LiteLLM** as the LLM provider in your coding agent container.
+This document explains how to configure the agents in this container to use
+**LiteLLM** as the LLM provider.
 
 ## Overview
 
-[LiteLLM](https://litellm.ai/) is a proxy server that allows you to use 100+ LLMs (OpenAI, Anthropic, Google, Mistral, Local models via Ollama, etc.) with a unified API. Goose has built-in support for LiteLLM, making it easy to switch between different LLM providers without changing your agent code.
+[LiteLLM](https://litellm.ai/) is a proxy server that allows you to use 100+ LLMs (OpenAI, Anthropic, Google, Mistral, Local models via Ollama, etc.) with a unified OpenAI-compatible API. Since LiteLLM speaks the OpenAI API format, agents connect to it the same way they connect to any OpenAI-compatible endpoint - there is no "litellm" provider type in either OpenCode or goose.
 
-## What's Included
+- **goose**: configured via the LiteLLM config file and the `goose-litellm`
+  wrapper described below.
+- **OpenCode**: configured as a custom provider using the
+  `openai-compatible` runtime package - see
+  [Using LiteLLM with OpenCode](#using-litellm-with-opencode) below.
 
-The Dockerfile now includes:
+## What's Included (goose)
+
+The Dockerfile includes:
 
 1. **LiteLLM Configuration File** (`/home/appuser/.config/goose/litellm-config.yaml`)
-   - Pre-configured models for OpenAI, Anthropic, Google, and Mistral
+   - Pre-configured models for Mistral (default), OpenAI, Anthropic, and Google
    - Environment variable placeholders for API keys
    - Default fallback models
 
@@ -21,7 +28,7 @@ The Dockerfile now includes:
    - Easy to use command: `goose-litellm`
 
 3. **Environment Variables**
-   - `GOOSE_LLM_PROVIDER` - Set the LLM provider (e.g., "openai", "anthropic", "custom")
+   - `GOOSE_LLM_PROVIDER` - Set the LLM provider (e.g., "mistral", "openai", "anthropic")
    - `GOOSE_LLM_MODEL` - Set the specific model to use
    - Standard API key environment variables for each provider
 
@@ -318,12 +325,87 @@ export GOOSE_LLM_PROVIDER="openai"
 # Then agents will use LiteLLM automatically
 ```
 
+## Using LiteLLM with OpenCode
+
+OpenCode has no native "litellm" provider - and it does not need one.
+LiteLLM exposes an OpenAI-compatible API, so OpenCode connects to it as a
+custom provider using the `@ai-sdk/openai-compatible` package.
+
+Add this to `~/.config/opencode/opencode.json` (global) or `opencode.json`
+in your project:
+
+```json
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "litellm/mistral-small-latest",
+  "provider": {
+    "litellm": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "LiteLLM Proxy",
+      "options": {
+        "baseURL": "http://litellm-proxy:4000/v1",
+        "apiKey": "{env:CUSTOM_LITELLM_API_KEY}"
+      },
+      "models": {
+        "mistral-small-latest": { "name": "Mistral Small (via LiteLLM)" },
+        "mistral-large-latest": { "name": "Mistral Large (via LiteLLM)" }
+      }
+    }
+  }
+}
+```
+
+Notes:
+
+- `npm` selects the OpenAI-compatible runtime package; LiteLLM speaks the
+  OpenAI API format, so no litellm-specific package is needed.
+- `options.apiKey` reads the credential from the `CUSTOM_LITELLM_API_KEY`
+  environment variable via the `{env:...}` placeholder (this container's
+  compose setup passes that variable). Alternatively run `/connect` and
+  pick the `litellm` provider to store the key in `auth.json`.
+- `options.baseURL` must point at the LiteLLM proxy's `/v1` endpoint.
+  Adjust the host to wherever your proxy runs (`http://localhost:4000/v1`
+  when the proxy runs on the same machine, `http://host.docker.internal:4000/v1`
+  from inside a container, a service name on a Docker network, etc.).
+- Each key under `models` must match an ID the proxy's `GET /v1/models`
+  returns; the reference format is `litellm/<model-id>`
+  (e.g. `litellm/mistral-small-latest`).
+
+Verify inside the container:
+
+```bash
+opencode models litellm
+opencode run --model litellm/mistral-small-latest "Reply with OK"
+```
+
+(Verified with OpenCode 1.19.5: the provider appears in
+`opencode models litellm` and requests route to the configured baseURL.)
+
+> **OpenCode V2**: if you upgrade to OpenCode V2, the config schema
+> changes to `providers` (plural) with a `package` field instead of
+> `npm`:
+>
+> ```jsonc
+> {
+>   "providers": {
+>     "litellm": {
+>       "name": "LiteLLM Proxy",
+>       "env": ["CUSTOM_LITELLM_API_KEY"],
+>       "package": "@opencode/ai/providers/openai-compatible",
+>       "settings": { "baseURL": "http://litellm-proxy:4000/v1" },
+>       "models": { "mistral-small-latest": { "name": "Mistral Small (via LiteLLM)" } }
+>     }
+>   }
+> }
+> ```
+
 ## Documentation References
 
 - [LiteLLM Official Documentation](https://docs.litellm.ai/)
 - [Goose Documentation](https://goose-docs.ai/)
 - [Goose GitHub Repository](https://github.com/aaif-goose/goose)
 - [LiteLLM GitHub Repository](https://github.com/BerriAI/litellm)
+- [OpenCode Providers Documentation](https://opencode.ai/docs/providers/) (custom providers / `openai-compatible` package)
 
 ## Support
 
