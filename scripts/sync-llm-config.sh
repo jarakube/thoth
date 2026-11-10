@@ -77,13 +77,25 @@ opencode_cfg="$HOME/.config/opencode/opencode.json"
 goose_cfg="$HOME/.config/goose/config.yaml"
 
 # --- OpenCode: merge custom provider into opencode.json -------------------
+# The resolved key is written directly into the config (mode 600): a
+# `docker compose exec` process does NOT run through the entrypoint, so
+# entrypoint exports are invisible to it and an {env:...} reference
+# would resolve empty. Writing the literal key matches OpenCode's own
+# credential storage (plaintext auth.json) - it never leaves the
+# container's appuser-owned config dir.
 mkdir -p "$(dirname "$opencode_cfg")"
-python3 - "$opencode_cfg" "$endpoint" "$key_env" $model_ids <<'PYEOF'
+
+# resolve the key once: env var, then secret file
+resolved_key="${!key_env:-}"
+if [ -z "$resolved_key" ] && [ -s /run/secrets/llm_api_key ]; then
+  resolved_key="$(head -n1 /run/secrets/llm_api_key | tr -d '[:space:]')"
+fi
+
+python3 - "$opencode_cfg" "$endpoint" "$key_env" "$resolved_key" $model_ids <<'PYEOF'
 import json
-import os
 import sys
 
-cfg_path, endpoint, key_env, *model_ids = sys.argv[1:]
+cfg_path, endpoint, key_env, resolved_key, *model_ids = sys.argv[1:]
 
 try:
     with open(cfg_path) as f:
@@ -91,25 +103,33 @@ try:
 except (FileNotFoundError, json.JSONDecodeError):
     cfg = {}
 
+if resolved_key:
+    api_key = resolved_key
+else:
+    # no key available (yet): reference the env var so a later shell that
+    # has it exported still works
+    api_key = "{env:%s}" % key_env
+
 provider = {
     "npm": "@ai-sdk/openai-compatible",
     "name": "LLM Proxy",
     "options": {
         "baseURL": endpoint,
-        "apiKey": "{env:%s}" % key_env,
+        "apiKey": api_key,
     },
     "models": {m: {"name": m} for m in model_ids},
 }
 
 cfg.setdefault("provider", {})
-# preserve user customizations: only set what is absent
 cfg["provider"]["litellm"] = provider
 
 with open(cfg_path, "w") as f:
     json.dump(cfg, f, indent=2)
     f.write("\n")
-print(f"sync-llm-config: wrote OpenCode provider 'litellm' -> {cfg_path}")
+print(f"sync-llm-config: wrote OpenCode provider 'litellm' -> {cfg_path}"
+      + (" (key embedded)" if resolved_key else " (env reference, no key yet)"))
 PYEOF
+chmod 600 "$opencode_cfg"
 
 # default model (only if the user has not chosen one)
 python3 - "$opencode_cfg" "$first_model" <<'PYEOF'
