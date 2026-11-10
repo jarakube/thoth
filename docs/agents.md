@@ -15,6 +15,35 @@ The general pattern for every agent:
    techniques used for OpenCode).
 3. Register MCP servers in its config (the example
    [jarakube.eu/mcp](mcp.md) server works with every agent below).
+4. Add an `AGENTS.md` to your project so every agent picks up the same
+   build/test instructions (see below).
+
+## AGENTS.md (project instructions)
+
+[AGENTS.md](https://agents.md) is the open "README for agents" format:
+an `AGENTS.md` file at the repository root gives coding agents build and
+test commands, conventions, and project context. This repo ships one
+(see [AGENTS.md](../AGENTS.md)); agents working *in your workspace* read
+yours the same way.
+
+Each agent loads it as follows:
+
+| Agent | AGENTS.md support |
+|---|---|
+| OpenCode | Native: project `AGENTS.md` (plus global `~/.config/opencode/AGENTS.md`); `/init` scaffolds one. Falls back to `CLAUDE.md` if no `AGENTS.md` exists |
+| Codex CLI | Native: reads `AGENTS.md` from the working directory up to the repo root (nested files supported; nearest wins) |
+| Claude Code | Reads `AGENTS.md` when no `CLAUDE.md`/`CLAUDE.local.md` exists in or above the working directory (v2.1.277+); otherwise import it from `CLAUDE.md` with `@AGENTS.md`, or change the Project instructions setting |
+| Gemini CLI | Via config: `{"context": {"fileName": "AGENTS.md"}}` in `~/.gemini/settings.json` (default file is `GEMINI.md`) |
+| goose | Reads instructions from the goosetown clone's `AGENTS.md` (orchestrator/delegate context) |
+
+Practical tips:
+
+- One repo-level `AGENTS.md` covers OpenCode, Codex, and (with the
+  fallback rule) Claude Code - no per-agent files needed.
+- For Claude Code with an existing `CLAUDE.md`, add an import line so
+  both stay in sync: `See @AGENTS.md for build and test instructions.`
+- Large monorepos: nested `AGENTS.md` files per package; agents read the
+  nearest one.
 
 ## Quick reference
 
