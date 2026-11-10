@@ -438,6 +438,71 @@ See [docs/agents.md](docs/agents.md) for install commands, skills
 locations, MCP config formats, derived-image recipes, and authentication
 notes per agent.
 
+## Use your GPG keys
+
+To sign commits (or use `pass` with your existing keys) inside the
+container, there are two supported ways to reuse your host keys:
+
+### Option A: mount the host keyring
+
+Uncomment the `~/.gnupg` volume in `docker-compose.yml`:
+
+```yaml
+volumes:
+  - ${HOME}/.gnupg:/home/appuser/.gnupg
+```
+
+GnuPG keeps daemon state (sockets, lock files) in its home directory, and
+that state does not survive bind mounts - a host `S.keyboxd` socket is a
+dead file inside the container, which makes gpg fail with
+`can't connect to keyboxd` or hang on stale locks. The container
+entrypoint detects and removes dead sockets and stale cross-machine lock
+files at startup, so the container-side daemons (`keyboxd`, `gpg-agent`)
+launch cleanly with the mounted keyring.
+
+Notes:
+
+- The mount is read-write; gpg needs to create its sockets and update
+  trustdb inside the directory.
+- Do not run gpg on the host and in the container simultaneously against
+  the same keyring - the daemons would fight over locks. Not recommended
+  on Docker Desktop for Mac (VirtioFS degrades sockets further); use
+  option B there.
+- Requires the uid match (the image is built with your uid via
+  `make up`).
+
+### Option B: import a key export (recommended, works everywhere)
+
+Export the secret key on the host and import it at container start:
+
+```bash
+# host: armored export of your key (prompts for the passphrase)
+gpg --armor --export-secret-keys YOURKEYID > ~/thoth-gpg-key.asc
+```
+
+```yaml
+# docker-compose.yml
+volumes:
+  - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
+environment:
+  GPG_IMPORT_FILE: /home/appuser/gpg-key.asc
+  # optional: mark imported keys as ultimately trusted
+  # GPG_TRUST_IMPORTED: "1"
+```
+
+The entrypoint imports the key into the container-local GNUPGHOME - no
+daemon state is shared with the host, so it works on every platform
+(including Docker Desktop for Mac). The key material lives in the
+`opencode-data` volume's home directory; remove the import file mount
+after the first start if you prefer.
+
+Verify inside the container:
+
+```bash
+docker compose exec thoth gpg -k          # list keys
+docker compose exec thoth gpg --list-secret-keys
+```
+
 ## Repository notes
 
 - [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt): documentation

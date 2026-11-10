@@ -17,6 +17,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     pipx \
     ripgrep \
     fzf \
+    gnupg-utils \
+    pinentry-curses \
     && rm -rf /var/lib/apt/lists/*
 
 # Ubuntu 26.04 ships an embedded /usr/bin/pebble binary in the base image.

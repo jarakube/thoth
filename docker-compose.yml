@@ -89,6 +89,13 @@ services:
       OPENCODE_METRICS_PORT: ${OPENCODE_METRICS_PORT:-9464}
       # Per-run artifacts land on the host (bind mount below)
       OPENCODE_RUN_METRICS_DIR: /app/share/opencode-runs
+      # GPG: reuse host keys. Either mount the whole host keyring
+      # (uncomment the volume below) or import an armored key export at
+      # startup (GPG_IMPORT_FILE). The entrypoint cleans host daemon
+      # state (dead sockets, stale locks) in mount mode.
+      GPG_IMPORT_FILE: ${GPG_IMPORT_FILE:-/dev/null}
+      # Optionally trust imported keys ultimately (ownertrust 6):
+      # GPG_TRUST_IMPORTED: ${GPG_TRUST_IMPORTED:-0}
       # Goosetown: a working clone is created at /workspace/goosetown on
       # first start. Set here as container env so ALL shells see them (also
       # non-interactive `docker compose exec bash -c`), not just PID 1.
@@ -116,6 +123,13 @@ services:
       # - ${HOME}/.kube:/home/appuser/.kube:ro
       # SSH keys for git/gh over ssh (requires uid match with appuser, 1000):
       # - ${HOME}/.ssh:/home/appuser/.ssh:ro
+      # GPG keyring - reuse host keys for commit signing / pass.
+      # Mount the whole host keyring (stale daemon sockets/locks from
+      # the host are cleaned at startup):
+      # - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
+      # ...or import an armored key export instead (see GPG_IMPORT_FILE
+      # above; mount the export file and point GPG_IMPORT_FILE at it):
+      # - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
     secrets:
       # Optional: LLM API key as a file (see the top-level secrets: block).
       # When LLM_API_KEY_FILE is unset this mounts an empty file

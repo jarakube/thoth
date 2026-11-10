@@ -36,6 +36,70 @@ if [ -f "/home/appuser/.config/goose/set-env.sh" ]; then
   set +u; source "/home/appuser/.config/goose/set-env.sh"; set -u
 fi
 
+# GPG support: reuse host keys inside the container.
+#
+# A host GNUPGHOME mount carries the host's daemon state, which is dead
+# inside the container/VM: unix sockets do not survive bind mounts (and
+# on Docker Desktop for Mac/VirtioFS they appear as plain files). That
+# makes gpg fail with "can't connect to keyboxd" or hang on stale locks.
+# Two ways to reuse keys (see README "Use your GPG keys"):
+#   1. MOUNT the host ~/.gnupg (compose: GPG_HOME_DIR mount): the
+#      entrypoint cleans dead sockets/locks so container daemons start.
+#   2. IMPORT a key (GPG_IMPORT_FILE, e.g. an armored secret-key
+#      export): keys land in the container-local GNUPGHOME - no daemon
+#      state shared with the host, works on every platform.
+gnupg_home="${GNUPGHOME:-$HOME/.gnupg}"
+
+gpg_clean_dead_daemon_state() {
+  # $1 = gnupg home
+  local home="$1"
+  [ -d "$home" ] || return 0
+  # Daemon sockets that are dead artifacts: a real socket whose
+  # connect() fails, or a socket degraded into a regular file
+  # (macOS VM mounts turn host sockets into plain files).
+  local sock
+  for sock in "$home"/S.keyboxd "$home"/S.gpg-agent "$home"/S.gpg-agent.browser \
+               "$home"/S.gpg-agent.extra "$home"/S.gpg-agent.ssh; do
+    [ -e "$sock" ] || continue
+    if [ -S "$sock" ]; then
+      if ! python3 -c "import socket; s = socket.socket(socket.AF_UNIX); s.connect('$sock')" 2>/dev/null; then
+        echo "gpg: stale daemon socket $sock (mounted from host?) - removing"
+        rm -f "$sock"
+      fi
+    else
+      echo "gpg: dead socket artifact $sock - removing"
+      rm -f "$sock"
+    fi
+  done
+  # Stale cross-machine lock files: gnupg locks record the holder's pid
+  # and hostname; a lock taken on the host never resolves in the container.
+  local lock
+  while IFS= read -r lock; do
+    echo "gpg: stale lock file $lock (from host?) - removing"
+    rm -f "$lock"
+  done < <(find "$home" -maxdepth 2 -name '*.lock' -type f 2>/dev/null)
+}
+
+if [ -n "${GPG_IMPORT_FILE:-}" ] && [ -s "$GPG_IMPORT_FILE" ]; then
+  # Import mode: bring keys into the container-local GNUPGHOME.
+  mkdir -p "$gnupg_home"
+  chmod 700 "$gnupg_home"
+  if gpg --batch --import "$GPG_IMPORT_FILE" 2>/dev/null; then
+    echo "gpg: imported keys from $GPG_IMPORT_FILE"
+    # optionally trust imported public keys ultimately (ownertrust level 6)
+    if [ "${GPG_TRUST_IMPORTED:-0}" = "1" ]; then
+      for fpr in $(gpg --list-keys --with-colons 2>/dev/null | awk -F: '/^fpr:/ {print $10}'); do
+        echo "$fpr:6:" | gpg --import-ownertrust 2>/dev/null || true
+      done
+    fi
+  else
+    echo "WARNING: gpg import from $GPG_IMPORT_FILE failed" >&2
+  fi
+else
+  # Mount mode: clean dead daemon state so container-side daemons start
+  gpg_clean_dead_daemon_state "$gnupg_home"
+fi
+
 # Export the LLM API key into the container environment (PID 1 context,
 # inherited by every opencode/goose process and shell). Resolution order:
 # 1. env var already set (compose environment) - keep it
