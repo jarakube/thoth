@@ -29,3 +29,7 @@ jobs:
         uses: christophebedard/dco-check@master
         with:
           args: "--verbose"
+        env:
+          # The checker reads commit data via the GitHub API and requires
+          # the token as an environment variable.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
