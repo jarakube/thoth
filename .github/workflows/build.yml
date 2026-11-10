@@ -19,8 +19,9 @@ permissions:
 
 jobs:
   # Gate: on pull requests, image build/push only runs after the REPO
-  # OWNER (or an account with write/admin permission) has commented
-  # "ready for test" on the PR. Pushes to main always run.
+  # OWNER has commented "ready for test" on the PR - and the approval
+  # must be CURRENT: new commits pushed to the PR branch invalidate it,
+  # the owner must comment again. Pushes to main always run.
   build-gate:
     name: Build gate (ready for test)
     if: github.event_name == 'pull_request'
@@ -39,23 +40,47 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          # Fetch all PR comments; approve only when the REPO OWNER has
-          # commented exactly "ready for test". Anyone can comment - only
-          # the owner's comment opens the gate.
+          # Gate policy: the REPO OWNER must have commented exactly
+          # "ready for test", and the approval must be CURRENT: if any
+          # commit was pushed to the PR branch AFTER that comment, the
+          # approval is stale and the owner must comment again.
           comments="$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate)"
           owner_login="$(gh api "repos/${REPO}" --jq '.owner.login')"
           approved="false"
+          # find the LATEST owner approval comment (id = newest last)
+          approval_comment_id=""
           while IFS= read -r line; do
             login="$(jq -r '.user.login' <<<"$line")"
             body="$(jq -r '.body' <<<"$line")"
+            cid="$(jq -r '.id' <<<"$line")"
             if [ "$body" = "ready for test" ] && [ "$login" = "$owner_login" ]; then
               approved="true"
-              echo "Gate open: '${login}' commented 'ready for test'"
-              break
+              approval_comment_id="$cid"
             fi
           done < <(jq -c '.[]' <<<"$comments" 2>/dev/null || echo "[]")
+
+          if [ "$approved" = "true" ]; then
+            # Staleness check via the PR timeline (chronological): if any
+            # 'committed' event appears AFTER the owner's approval
+            # comment, new commits were pushed since the approval.
+            timeline="$(gh api -H "Accept: application/vnd.github+json" \
+              "repos/${REPO}/issues/${PR_NUMBER}/timeline" --paginate)"
+            stale_commits="$(jq -r --arg cid "$approval_comment_id" '
+              [ .[] | select(.event == "commented" or .event == "committed") ]
+              | (map(.event == "commented" and (.id|tostring) == $cid) | index(true)) as $cpos
+              | if $cpos == null then 0
+                else [ .[($cpos+1):][] | select(.event == "committed") ] | length end
+            ' <<<"$timeline")"
+            if [ "${stale_commits:-0}" -gt 0 ]; then
+              approved="false"
+              echo "Gate blocked: ${stale_commits} commit(s) were pushed to the PR after the owner's 'ready for test' comment."
+              echo "The repo owner must comment 'ready for test' again for the new commits."
+            else
+              echo "Gate open: '${owner_login}' commented 'ready for test' and no commits were pushed after it"
+            fi
+          fi
           if [ "$approved" != "true" ]; then
-            echo "Build blocked: repo owner ('${owner_login}') has not commented 'ready for test' on PR #${PR_NUMBER}"
+            echo "Build blocked: no current 'ready for test' approval from repo owner ('${owner_login}') on PR #${PR_NUMBER}"
           fi
           echo "approved=${approved}" >> "$GITHUB_OUTPUT"
 
