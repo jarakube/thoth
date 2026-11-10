@@ -73,7 +73,7 @@ docker build -t thoth .
 Run interactively:
 
 ```bash
-docker run --rm -it agent
+docker run --rm -it thoth
 ```
 
 ### Docker Compose (recommended)
@@ -126,7 +126,7 @@ docker run --rm -it \
   -p 9464:9464 \
   -v "$(pwd):/app" \
   -v "$HOME/.local/share/opencode/auth.json:/home/appuser/.local/share/opencode/auth.json:ro" \
-  agent
+  thoth
 ```
 
 Then scrape:
@@ -211,7 +211,7 @@ Quick summary:
 # development: mount host skills over the bundled ones
 docker run --rm -it \
   -v "$(pwd)/my-skills:/home/appuser/.config/opencode/skills:ro" \
-  agent
+  thoth
 ```
 
 ## Goose / Goosetown
@@ -315,11 +315,23 @@ fallback for the `goose` telepathy wrapper.
 
 ## CI
 
-`.github/workflows/build.yml` builds the image on every push to `main` and
-publishes it to `ghcr.io/<owner>/agent` using the default `GITHUB_TOKEN`.
-No private registries or secrets are required.
+`.github/workflows/build.yml` builds the image on every push to `main`
+and publishes it to `ghcr.io/<owner>/thoth` using the default
+`GITHUB_TOKEN`. No private registries or secrets are required. Published
+images are also scanned with Trivy (fail on CRITICAL/HIGH findings,
+unfixed only); the scan runs on every push, not on pull requests.
 
 ## Configure OpenCode to use Keycloak
+
+> **Note: this requires a custom OpenCode build.** The stock
+> `opencode-ai` release installed by default (via npm) does not include
+> the Keycloak authentication feature - `auth.keycloak` config and
+> `opencode auth login keycloak` come from a patched OpenCode fork. To
+> use this flow, build your own OpenCode binary with the Keycloak
+> patches and place it at `build/opencode/opencode` before building the
+> image (see [Use a custom opencode build](#use-a-custom-opencode-build));
+> the Dockerfile then uses it instead of the npm release. With the
+> stock npm release, this section does not apply.
 
 OpenCode in this image supports a global Keycloak login plus MCP server
 configs that reuse that bearer token.
@@ -376,7 +388,7 @@ configs that reuse that bearer token.
    docker run --rm -it \
      -v "$HOME/.local/share/opencode/auth.json:/home/appuser/.local/share/opencode/auth.json:ro" \
      -v "$HOME/.config/opencode:/home/appuser/.config/opencode:ro" \
-     agent
+     thoth
    ```
 
    This is the recommended path because the default Keycloak callback binds
