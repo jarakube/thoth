@@ -132,8 +132,8 @@ RUN mkdir -p /home/appuser/.config/goose \
     '  master_key: "${LITELLM_MASTER_KEY:-}"' \
     '  database_url: "${LITELLM_DATABASE_URL:-sqlite:///./litellm.db}"' \
     '  default_fallback_models:' \
-    '    - "gpt-3.5-turbo"' \
-    '    - "claude-3-sonnet"' \
+    '    - "mistral-large-latest"' \
+    '    - "mistral-medium-latest"' \
     > /home/appuser/.config/goose/litellm-config.yaml
 
 # Create wrapper script for goose with LiteLLM support
