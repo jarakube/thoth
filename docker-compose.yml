@@ -76,7 +76,10 @@ services:
       # Space/comma-separated model IDs served by the endpoint
       LLM_MODELS: ${LLM_MODELS:-mistral-small-latest mistral-large-latest}
       LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-}
-      # The API key itself (read by both agents via the variable above)
+      # The API key itself: either as an environment variable (above), or -
+      # preferred - as a docker compose SECRET (see secrets: below), e.g.
+      # exported from `pass show path/to/llm-key`. The sync script reads
+      # whichever is set.
       CUSTOM_LITELLM_API_KEY: ${CUSTOM_LITELLM_API_KEY:-}
       # Goose defaults
       GOOSE_LLM_PROVIDER: ${GOOSE_LLM_PROVIDER:-mistral}
@@ -113,6 +116,11 @@ services:
       # - ${HOME}/.kube:/home/appuser/.kube:ro
       # SSH keys for git/gh over ssh (requires uid match with appuser, 1000):
       # - ${HOME}/.ssh:/home/appuser/.ssh:ro
+    secrets:
+      # Optional: LLM API key as a file (see the top-level secrets: block).
+      # When LLM_API_KEY_FILE is unset this mounts an empty file
+      # (/dev/null fallback) and the sync script ignores it.
+      - llm_api_key
     healthcheck:
       # Healthy when the metrics endpoint answers, or when the exporter is
       # intentionally disabled (OPENCODE_METRICS_ENABLED=0).
@@ -124,3 +132,13 @@ services:
 
 volumes:
   opencode-data:
+
+secrets:
+  # API key as a file instead of an env var - keeps the key out of
+  # `docker inspect` and shell history. Point LLM_API_KEY_FILE at a file
+  # produced by your secret manager, e.g.:
+  #   pass show path/to/llm-key > /tmp/llm-key   (or use `make up`, which
+  #   wires LLM_API_KEY_FILE via `pass` automatically when available)
+  # Unset -> empty fallback; the sync script ignores an empty secret.
+  llm_api_key:
+    file: ${LLM_API_KEY_FILE:-/dev/null}

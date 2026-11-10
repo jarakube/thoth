@@ -26,6 +26,15 @@
 #                       (default: "mistral-small-latest mistral-large-latest")
 #   LLM_DEFAULT_MODEL   Default model (default: first of LLM_MODELS)
 #
+# API key resolution order (first hit wins):
+#   1. The env var named by LLM_API_KEY_ENV (e.g. CUSTOM_LITELLM_API_KEY)
+#   2. The docker compose secret file /run/secrets/llm_api_key
+#      (mounted from LLM_API_KEY_FILE on the host, e.g. `pass show ...`
+#       output redirected to a file)
+#
+# The key is never written to any config file - both configs only
+# reference the env var / secret.
+#
 # Generated config locations:
 #   ~/.config/opencode/opencode.json   (merged - existing keys preserved)
 #   ~/.config/goose/config.yaml        (GOOSE_* keys set, rest preserved)
@@ -50,6 +59,19 @@ fi
 
 first_model="${default_model:-$(echo "$models" | tr ',' ' ' | awk '{print $1}')}"
 model_ids=$(echo "$models" | tr ',' ' ' | xargs)
+
+# --- API key resolution ----------------------------------------------------
+# 1) env var named by LLM_API_KEY_ENV; 2) compose secret file. The key is
+# exported so the {env:...} references in the generated configs resolve.
+# It is never written into any file.
+secret_file="/run/secrets/llm_api_key"
+if [ -z "${!key_env:-}" ] && [ -s "$secret_file" ]; then
+  key_value="$(head -n1 "$secret_file" | tr -d '[:space:]')"
+  if [ -n "$key_value" ]; then
+    export "$key_env"="$key_value"
+    echo "sync-llm-config: ${key_env} loaded from secret file $secret_file"
+  fi
+fi
 
 opencode_cfg="$HOME/.config/opencode/opencode.json"
 goose_cfg="$HOME/.config/goose/config.yaml"

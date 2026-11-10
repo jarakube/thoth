@@ -42,6 +42,23 @@ Behavior:
 - After changing `LLM_*` in `.env`, restart the container
   (`docker compose up -d`) to re-run the sync.
 
+### API key resolution (pass / secrets)
+
+The key is resolved in this order (first hit wins):
+
+1. The env var named by `LLM_API_KEY_ENV` (e.g. `CUSTOM_LITELLM_API_KEY`)
+2. The docker compose secret file `/run/secrets/llm_api_key` - mounted
+   from `LLM_API_KEY_FILE` on the host
+
+For `pass` users, `make up` handles this automatically: it runs
+`pass show $PASS_LLM_ENTRY` (default entry `llm/thoth-api-key`), writes
+the first line to a temporary mode-600 file, exports it as
+`LLM_API_KEY_FILE` for the compose secret, and removes the file when
+done. The key therefore exists only in the pass store, the short-lived
+temp file, and the container's secret mount - never in `.env`, the
+compose file, the image, or any generated config (both configs reference
+the env var, they never embed the key).
+
 ## What's Included (goose)
 
 The Dockerfile includes:

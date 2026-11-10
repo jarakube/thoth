@@ -271,6 +271,37 @@ After changing `LLM_*` in `.env`, restart with `docker compose up -d` to
 re-run the sync. See [LITELLM_CONFIGURATION.md](LITELLM_CONFIGURATION.md)
 for the full variable reference.
 
+### Keeping the API key out of .env (pass / compose secrets)
+
+The key never needs to live in `.env` or the compose file. Three options:
+
+1. **`pass` (recommended)** - store the key in the standard Unix password
+   store and let `make up` wire it in:
+
+   ```bash
+   pass init <your-gpg-id>
+   pass insert -m llm/thoth-api-key    # paste the key
+
+   make up    # exports the key from pass into the llm_api_key compose secret
+   ```
+
+   The Makefile resolves `PASS_LLM_ENTRY` (default `llm/thoth-api-key`)
+   into a temporary mode-600 file, mounts it as the `llm_api_key` docker
+   compose secret, and deletes the file afterwards. Without pass or the
+   entry, `make up` starts without the secret and falls back to `.env`.
+
+2. **Compose secret via any secret manager** - point `LLM_API_KEY_FILE`
+   in `.env` at a file containing the key (sops, vault, 1password CLI,
+   plain file - your choice). The file is mounted read-only at
+   `/run/secrets/llm_api_key`.
+
+3. **Plain env var** - `CUSTOM_LITELLM_API_KEY` in `.env` (simplest, but
+   visible in `docker inspect` and shell history).
+
+In all cases the sync script reads the key from the env var or the
+secret file and exports it for the agents - it is never written to any
+generated config file (configs only reference the variable).
+
 Goosetown runs as a **working clone inside the workspace**: the container
 entrypoint clones `https://github.com/aaif-goose/goosetown.git` to
 `workspace/goosetown` on first start (skipped if the directory already
