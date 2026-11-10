@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Name or ID of the running agent container to configure.
-CONTAINER="${CONTAINER:-agent}"
+CONTAINER="${CONTAINER:-thoth}"
 
 echo "🦆 Configuring goose provider..."
 

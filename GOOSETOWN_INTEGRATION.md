@@ -102,12 +102,12 @@ To test the integration:
 
 1. Build the container:
    ```bash
-   docker build -t goosetown-agent .
+   docker build -t thoth .
    ```
 
 2. Run the container:
    ```bash
-   docker run -it goosetown-agent bash
+   docker run -it thoth bash
    ```
 
 3. Verify goose is available:

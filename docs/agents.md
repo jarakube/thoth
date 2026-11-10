@@ -9,7 +9,7 @@ how to map your existing `skills/` directory into them.
 The general pattern for every agent:
 
 1. Install it in the running container (or bake it into a derived image).
-   Global npm installs need root: `docker compose exec -u root agent npm i -g <pkg>` (or `make shell`, then `sudo`-style `-u root` exec). The container user `appuser` cannot write `/usr/local/lib/node_modules`.
+   Global npm installs need root: `docker compose exec -u root thoth npm i -g <pkg>` (or `make shell`, then `sudo`-style `-u root` exec). The container user `appuser` cannot write `/usr/local/lib/node_modules`.
 2. Point its skills directory at your skills (bind mount, symlink, or
    copy - see [skills/README.md](../skills/README.md) for the same mapping
    techniques used for OpenCode).
@@ -67,11 +67,11 @@ Install and verify:
 
 ```bash
 # as root (appuser cannot write /usr/local/lib/node_modules)
-docker compose exec -u root agent npm install -g @anthropic-ai/claude-code
+docker compose exec -u root thoth npm install -g @anthropic-ai/claude-code
 
 # as appuser
-docker compose exec agent claude --version
-docker compose exec agent claude /login     # authenticate (Anthropic account or API key)
+docker compose exec thoth claude --version
+docker compose exec thoth claude /login     # authenticate (Anthropic account or API key)
 ```
 
 (Verified with Claude Code 2.1.322 in this container.)
@@ -95,7 +95,7 @@ cp -r /path/to/repo/skills/ceph .claude/skills/
 Or bind-mount them at runtime (host paths, no copy):
 
 ```bash
-docker compose run --rm agent bash -c '
+docker compose run --rm thoth bash -c '
   mkdir -p ~/.claude/skills
   cp -r /workspace/.claude-shared/skills/* ~/.claude/skills/ 2>/dev/null || true
   claude'
@@ -125,9 +125,9 @@ for all projects, `--scope project` writes `.mcp.json`).
 Install and verify (global install needs root, see above):
 
 ```bash
-docker compose exec -u root agent npm install -g @openai/codex
-docker compose exec agent codex --version
-docker compose exec agent codex login      # ChatGPT account or API key
+docker compose exec -u root thoth npm install -g @openai/codex
+docker compose exec thoth codex --version
+docker compose exec thoth codex login      # ChatGPT account or API key
 ```
 
 ### Skills
@@ -170,9 +170,9 @@ url = "https://jarakube.eu/mcp"
 Install and verify (global install needs root, see above):
 
 ```bash
-docker compose exec -u root agent npm install -g @google/gemini-cli
-docker compose exec agent gemini --version
-docker compose exec agent gemini           # OAuth login on first start, or export GEMINI_API_KEY
+docker compose exec -u root thoth npm install -g @google/gemini-cli
+docker compose exec thoth gemini --version
+docker compose exec thoth gemini           # OAuth login on first start, or export GEMINI_API_KEY
 ```
 
 Note: since June 2026 Google points free-tier / Google AI accounts at the
@@ -229,7 +229,7 @@ mcp_servers:
 For repeatable setups, extend the image instead of installing ad hoc:
 
 ```dockerfile
-FROM agent-container:latest
+FROM thoth:latest
 
 # extra agents
 RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli

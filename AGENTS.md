@@ -1,15 +1,19 @@
 # AGENTS.md
 
-Guidance for AI coding agents working on **this repository** (the agent
-container). For how the agents inside the container consume AGENTS.md in
-*your* projects, see [docs/agents.md](docs/agents.md#agentsmd-project-instructions).
+Guidance for AI coding agents working on **this repository** (the thoth
+agent container). For how the agents inside the container consume
+AGENTS.md in *your* projects, see
+[docs/agents.md](docs/agents.md#agentsmd-project-instructions).
 
 ## Project overview
 
-This repository builds a containerized CLI agent environment: OpenCode +
-goose/goosetown + kubectl, with a Prometheus metrics exporter, a generic
-skill pack, and Docker Compose wiring. It is intended for open-source
-publication - it must contain no private infrastructure references.
+This repository builds **thoth**, a containerized CLI agent environment:
+OpenCode + goose/goosetown + kubectl, with a Prometheus metrics exporter,
+a generic skill pack, and Docker Compose wiring. It is intended for
+open-source publication - it must contain no private infrastructure
+references. The project is maintained and supported by
+[jarakube.eu](https://jarakube.eu); the example MCP server
+`https://jarakube.eu/mcp` in the docs is an intentional public reference.
 
 ## Build and run
 
@@ -60,8 +64,10 @@ goosetown clone and MCP registration lines.
 - The example MCP server URL `https://jarakube.eu/mcp` is an intentional
   public example; other internal names must not appear anywhere.
 - Before publishing or merging, scan for leaks:
-  `rg -i "jaraco|jarakube-jaraco|pdr-harbor|happy_bardeen" --hidden -g '!.git' .`
-  (only the jarakube.eu example URL may match)
+  `rg -i "pdr-harbor|happy_bardeen|jarakube-jaraco" --hidden -g '!.git' .`
+  Intentional public references that MAY match scans: `jarakube.eu`
+  (maintainer/site/MCP example) and the Jaraco GmbH maintainer credit in
+  the README. Internal infrastructure names must never appear.
 - Docs changes should be verified against the official docs of the tool in
   question; agent CLI facts (flags, config formats, versions) change often.
 - Commit messages: conventional style, one line summary + body paragraphs

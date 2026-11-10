@@ -17,7 +17,9 @@ agents on first start (opt-out via `MCP_EXAMPLE_ENABLED=0`):
 https://jarakube.eu/mcp
 ```
 
-It serves the Jaraco GmbH website content: services, blog posts, categories,
+It is operated by [jarakube.eu](https://jarakube.eu), the sovereign
+Kubernetes platform that also maintains and supports this project, and
+serves the Jaraco GmbH website content: services, blog posts, categories,
 and Jarakube platform resources, plus a `draft_email` tool. It requires no
 authentication.
 

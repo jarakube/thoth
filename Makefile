@@ -21,12 +21,12 @@ build:
 
 # Interactive shell in the running agent
 shell:
-	docker compose exec agent bash
+	docker compose exec thoth bash
 
-# One-shot: docker compose run --rm agent <CMD...>
+# One-shot: docker compose run --rm thoth <CMD...>
 # Usage: make run CMD="opencode --version"
 run:
-	HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) docker compose run --rm agent $(CMD)
+	HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) docker compose run --rm thoth $(CMD)
 
 logs:
 	docker compose logs -f agent

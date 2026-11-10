@@ -3,14 +3,14 @@
 # Quick start:
 #   cp .env.example .env        # optional: add provider keys, set WORKSPACE_DIR
 #   docker compose up -d --build
-#   docker compose exec agent bash
+#   docker compose exec thoth bash
 #
 # One-shot interactive session (container removed on exit):
-#   docker compose run --rm agent
+#   docker compose run --rm thoth
 #
 # Start OpenCode or goose directly:
-#   docker compose run --rm agent opencode
-#   docker compose run --rm agent goose
+#   docker compose run --rm thoth opencode
+#   docker compose run --rm thoth goose
 #
 # Prometheus metrics: http://localhost:9464/metrics
 #
@@ -32,7 +32,7 @@
 # directory on first use.
 
 services:
-  agent:
+  thoth:
     build:
       context: .
       args:
@@ -43,8 +43,8 @@ services:
         # with plain docker compose, set them in .env or the environment.
         APP_UID: ${HOST_UID:-1000}
         APP_GID: ${HOST_GID:-1000}
-    image: agent-container:latest
-    container_name: agent
+    image: thoth:latest
+    container_name: thoth
     # To run a published image instead of building locally, comment out
     # `build:` and point `image:` at your registry, e.g.:
     # image: ghcr.io/<owner>/<repo>:latest
@@ -53,7 +53,7 @@ services:
     tty: true
     working_dir: /workspace
     # Interactive bash by default; override with
-    # `docker compose run --rm agent <command>`
+    # `docker compose run --rm thoth <command>`
     command: bash
     restart: unless-stopped
     ports:

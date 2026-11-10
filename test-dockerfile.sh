@@ -86,6 +86,6 @@ echo "  COPY commands: $COPY_COUNT"
 echo "  CMD/ENTRYPOINT: Found"
 echo ""
 echo "🚀 Ready to build:"
-echo "  docker build -t agent-container -f "$DOCKERFILE" ."
+echo "  docker build -t thoth -f "$DOCKERFILE" ."
 
 exit 0

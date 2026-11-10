@@ -39,7 +39,7 @@ markdown instructions) without referencing any private infrastructure.
 2. Rebuild the image:
 
    ```bash
-   docker build -t agent .
+   docker build -t thoth .
    ```
 
 3. Verify inside the container:
@@ -60,7 +60,7 @@ following work at runtime, with no image rebuild:
 | **Kubernetes ConfigMap** | Mount a ConfigMap at `/home/appuser/.config/opencode/skills` (or use ` projected volumes` to combine ConfigMap + image content) | Cluster deployments; version skills via GitOps |
 | **Kubernetes PVC** | Persistent volume mounted at the same path | Large skill packs or skills generated at runtime |
 | **`docker cp`** | `docker cp my-skill running-container:/home/appuser/.config/opencode/skills/` | Quick experimentation in a running container |
-| **Custom `FROM` image** | `FROM agent:latest` + `COPY my-skills/ /home/appuser/.config/opencode/skills/` | Derived, opinionated images that bake in your skills |
+| **Custom `FROM` image** | `FROM thoth:latest` + `COPY my-skills/ /home/appuser/.config/opencode/skills/` | Derived, opinionated images that bake in your skills |
 | **Git clone at startup** | Mount a script/entrypoint hook that clones your skills repo into the skills dir | Keeping skills in their own repository with independent versioning |
 
 ### Notes on Kubernetes mounts

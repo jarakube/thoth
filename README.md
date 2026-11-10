@@ -1,8 +1,13 @@
-# agent-container
+# thoth
+
+![thoth](https://img.shields.io/badge/maintained%20by-jarakube.eu-blue)
 
 Containerized OpenCode agent environment for Kubernetes and Ceph-focused
 operations, with Goose/Goosetown multi-agent support and a built-in
 Prometheus metrics endpoint for agent runs.
+
+Named after [Thoth](https://en.wikipedia.org/wiki/Thoth), the ancient
+Egyptian deity of wisdom, writing, and knowledge.
 
 ## Project purpose
 
@@ -15,6 +20,19 @@ This repository builds a CLI agent image that combines:
 
 The result is a ready-to-run agent container for infrastructure-heavy tasks
 where Kubernetes and storage knowledge are needed in the same environment.
+
+## Maintainer and support
+
+This project is maintained and supported by
+**[jarakube.eu](https://jarakube.eu)** - the sovereign Kubernetes platform
+by [Jaraco GmbH](https://www.jaraco.de).
+
+- Issues, feature requests, and contributions are welcome via GitHub.
+- Commercial support, hosting, and platform integrations are available
+  through jarakube.eu.
+- The example MCP server used in the docs
+  ([jarakube.eu/mcp](https://jarakube.eu/mcp)) is operated by the same
+  platform.
 
 ## What the image contains
 
@@ -48,8 +66,8 @@ Build:
 
 ```bash
 git clone --recurse-submodules <this-repo-url>
-cd agent-container
-docker build -t agent .
+cd thoth
+docker build -t thoth .
 ```
 
 Run interactively:
@@ -83,7 +101,7 @@ make shell             # interactive bash in /workspace
   across restarts (kept out of the project dir since it holds credentials)
 - Prometheus metrics at `http://localhost:9464/metrics`
 - One-shot sessions: `make run CMD="opencode"` or
-  `docker compose run --rm agent opencode`
+  `docker compose run --rm thoth opencode`
 
 Permissions: the image builds `appuser` with your host uid/gid
 (`APP_UID`/`APP_GID` build args; `make` passes them automatically, plain
@@ -174,7 +192,7 @@ Minimal Prometheus scrape config:
 
 ```yaml
 scrape_configs:
-  - job_name: agent-container
+  - job_name: thoth
     static_configs:
       - targets:
           - localhost:9464
