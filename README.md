@@ -325,6 +325,18 @@ opencode mcp list    # shows jarakube-website (connected)
 
 See [docs/mcp.md](docs/mcp.md) for adding your own servers to either agent.
 
+## Integrating other agents
+
+The container is a generic environment for CLI coding agents - Claude Code,
+Codex CLI, and Gemini CLI install via npm and run alongside OpenCode and
+goose. All of them share the same skill format (`SKILL.md` with
+name/description frontmatter), so this repo's `skills/` directory maps into
+each one; MCP servers are configured per agent.
+
+See [docs/agents.md](docs/agents.md) for install commands, skills
+locations, MCP config formats, derived-image recipes, and authentication
+notes per agent.
+
 ## Repository notes
 
 - Add new skills under `skills/<name>/SKILL.md`; they will be copied into the
