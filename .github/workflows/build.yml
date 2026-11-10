@@ -65,7 +65,10 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          # Scan by DIGEST (output of the build-push step), not by tag:
+          # metadata-action produces 'sha-<short>' tags, so a
+          # ':${{ github.sha }}' tag never exists in the registry.
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build-push.outputs.digest }}
           format: table
           vuln-type: os,library
           severity: CRITICAL,HIGH
