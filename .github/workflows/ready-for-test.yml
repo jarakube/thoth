@@ -70,7 +70,10 @@ jobs:
           # so build.yml's gate re-checks the comments and opens.
           pr="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")"
           head_ref="$(jq -r '.head.ref' <<<"$pr")"
-          run_id="$(gh run list --workflow Build.yml \
+          # --workflow takes the workflow FILE name (case-sensitive) or
+          # its numeric id - NOT the display name ("Build"). Build.yml
+          # 404s; the file is build.yml.
+          run_id="$(gh run list --workflow build.yml \
             --branch "$head_ref" --event pull_request --limit 1 \
             --json databaseId --jq '.[0].databaseId')"
           if [ -n "$run_id" ] && [ "$run_id" != "null" ]; then
