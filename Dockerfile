@@ -171,6 +171,15 @@ RUN echo 'export PATH="/usr/local/bin:$PATH"' >> /home/appuser/.bashrc \
     && echo 'export GOOSE_LLM_MODEL="${GOOSE_LLM_MODEL:-mistral-small-latest}"' >> /home/appuser/.bashrc \
     && echo 'export GOOSE_NO_ANALYTICS="1"' >> /home/appuser/.bashrc
 
+# Thoth banner for interactive shells (docker compose exec thoth bash);
+# non-interactive shells (bash -c) do not source .bashrc and stay clean
+COPY --chown=appuser:appuser assets/thoth-banner.txt /home/appuser/.config/thoth-banner.txt
+RUN printf '%s\n' \
+    '# Thoth banner (interactive shells only)' \
+    'if [ -n "$PS1" ] && [ -f "$HOME/.config/thoth-banner.txt" ]; then' \
+    '    cat "$HOME/.config/thoth-banner.txt"' \
+    'fi' >> /home/appuser/.bashrc
+
 EXPOSE 9464
 USER appuser
 WORKDIR /app
