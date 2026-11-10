@@ -36,6 +36,22 @@ if [ -f "/home/appuser/.config/goose/set-env.sh" ]; then
   set +u; source "/home/appuser/.config/goose/set-env.sh"; set -u
 fi
 
+# Export the LLM API key into the container environment (PID 1 context,
+# inherited by every opencode/goose process and shell). Resolution order:
+# 1. env var already set (compose environment) - keep it
+# 2. docker compose secret /run/secrets/llm_api_key (e.g. from `pass` via
+#    make up) - read first line, trim whitespace
+# The generated agent configs only REFERENCE the env var ({env:...} /
+# ${...}), so it must actually be present in the process environment.
+llm_key_env="${LLM_API_KEY_ENV:-CUSTOM_LITELLM_API_KEY}"
+if [ -z "${!llm_key_env:-}" ] && [ -s /run/secrets/llm_api_key ]; then
+  key_value="$(head -n1 /run/secrets/llm_api_key | tr -d '[:space:]')"
+  if [ -n "$key_value" ]; then
+    export "$llm_key_env"="$key_value"
+    echo "Loaded ${llm_key_env} from /run/secrets/llm_api_key"
+  fi
+fi
+
 # Auto-detect if we should use goose-opencode wrapper
 if [ -f "/usr/local/bin/goose-opencode" ] && [ "$1" = "opencode" ]; then
   echo "🔄 Mapping opencode configuration to goose..."
