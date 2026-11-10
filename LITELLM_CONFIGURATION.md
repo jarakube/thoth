@@ -25,6 +25,7 @@ container start and writes both configs:
 | `LLM_ENDPOINT` (incl. `/v1`) | `provider.litellm.options.baseURL` in `~/.config/opencode/opencode.json` | `LITELLM_HOST` + `LITELLM_BASE_PATH` in `~/.config/goose/set-env.sh` |
 | `LLM_API_KEY_ENV` (default `CUSTOM_LITELLM_API_KEY`) | `provider.litellm.options.apiKey` (`{env:...}` reference) | `LITELLM_API_KEY` (same env reference) |
 | `LLM_MODELS` | `provider.litellm.models` map | `GOOSE_MODEL` default (first entry) |
+| `LLM_DEFAULT_MODEL` (default: first of `LLM_MODELS`) | top-level `model` (`litellm/<id>`, only when unset) | `GOOSE_MODEL` in `config.yaml` |
 
 The script also sets `GOOSE_PROVIDER: litellm` in
 `~/.config/goose/config.yaml` (using goose's built-in litellm provider)

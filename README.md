@@ -236,6 +236,10 @@ Details:
   agents against a LiteLLM proxy: goose via the `goose-litellm` wrapper,
   OpenCode via a custom `openai-compatible` provider (OpenCode has no
   native litellm provider - it connects to LiteLLM's OpenAI-compatible API)
+- [GOOSETOWN_INTEGRATION.md](GOOSETOWN_INTEGRATION.md) - what the image sets
+  up for goosetown (paths, wrappers, telepathy)
+- `configure-goose.sh` - helper to drive `goose configure` non-interactively
+  inside a running container (`CONTAINER=<name> ./configure-goose.sh`)
 
 ### One config for both agents
 
@@ -251,16 +255,21 @@ LLM_MODELS=mistral-small-latest mistral-large-latest
 CUSTOM_LITELLM_API_KEY=sk-...
 ```
 
+```bash
+# apply and verify
+docker compose up -d
+docker compose exec thoth opencode models litellm   # OpenCode: litellm/<model> entries
+docker compose exec thoth goose doctor               # goose: "new session · litellm <model>"
+```
+
 The script writes the OpenCode custom provider config
 (`~/.config/opencode/opencode.json`), the goose provider selection
 (`~/.config/goose/config.yaml`, using goose's built-in `litellm`
 provider), and the shared `LITELLM_*` env for goose sessions. Unset
 `LLM_ENDPOINT` = no-op; each agent falls back to its own configuration.
-See [LITELLM_CONFIGURATION.md](LITELLM_CONFIGURATION.md) for details.
-- [GOOSETOWN_INTEGRATION.md](GOOSETOWN_INTEGRATION.md) - what the image sets
-  up for goosetown (paths, wrappers, telepathy)
-- `configure-goose.sh` - helper to drive `goose configure` non-interactively
-  inside a running container (`CONTAINER=<name> ./configure-goose.sh`)
+After changing `LLM_*` in `.env`, restart with `docker compose up -d` to
+re-run the sync. See [LITELLM_CONFIGURATION.md](LITELLM_CONFIGURATION.md)
+for the full variable reference.
 
 Goosetown runs as a **working clone inside the workspace**: the container
 entrypoint clones `https://github.com/aaif-goose/goosetown.git` to
