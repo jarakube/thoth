@@ -80,8 +80,16 @@ gpg_clean_dead_daemon_state() {
   done < <(find "$home" -maxdepth 2 -name '*.lock' -type f 2>/dev/null)
 }
 
+if [ -n "${GPG_IMPORT_FILE:-}" ] && [ "${GPG_IMPORT_FILE}" != "/dev/null" ] && [ ! -e "$GPG_IMPORT_FILE" ]; then
+  # set but not mounted: point the user at the missing volume mount
+  echo "WARNING: GPG_IMPORT_FILE is set to '$GPG_IMPORT_FILE' but the file does not exist in the container." >&2
+  echo "         Mount the key export as a volume (see README 'Use your GPG keys')." >&2
+fi
+
 if [ -n "${GPG_IMPORT_FILE:-}" ] && [ -s "$GPG_IMPORT_FILE" ]; then
   # Import mode: bring keys into the container-local GNUPGHOME.
+  # Idempotent: gpg de-duplicates on re-import, so this runs on every
+  # start and keeps the (now volume-persisted) keyring in sync.
   mkdir -p "$gnupg_home"
   chmod 700 "$gnupg_home"
   if gpg --batch --import "$GPG_IMPORT_FILE" 2>/dev/null; then

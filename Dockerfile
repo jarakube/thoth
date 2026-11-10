@@ -72,7 +72,12 @@ RUN if getent group appuser >/dev/null 2>&1; then true; \
     else groupadd -g "$APP_GID" appuser; fi \
     && useradd -m -u "$APP_UID" -g "$APP_GID" -s /bin/bash appuser
 
-RUN mkdir -p /home/appuser/.local/share/opencode/skills /home/appuser/.local/share/opencode/repos /home/appuser/.ssh /home/appuser/.config/goosetown
+# ~/.gnupg must exist in the image so the gnupg-data compose volume
+# inherits appuser ownership on first use (fresh named volumes are
+# root-owned otherwise; docker seeds volume ownership from image content)
+RUN mkdir -p /home/appuser/.local/share/opencode/skills /home/appuser/.local/share/opencode/repos /home/appuser/.ssh /home/appuser/.config/goosetown /home/appuser/.gnupg \
+    && chmod 700 /home/appuser/.gnupg \
+    && chown -R appuser:appuser /home/appuser/.gnupg
 RUN ssh-keyscan github.com >> /home/appuser/.ssh/known_hosts
 COPY --chown=appuser:appuser skills/ /home/appuser/.config/opencode/skills/
 COPY --chown=appuser:appuser scripts/ /app/scripts/
@@ -85,7 +90,7 @@ COPY --chown=appuser:appuser goosetown/goose_gui /usr/local/bin/goose_gui
 COPY --chown=appuser:appuser goosetown/gtwall /usr/local/bin/gtwall
 COPY --chown=appuser:appuser goosetown/dashboard /usr/local/bin/goosetown-dashboard
 
-RUN chown -R appuser:appuser /home/appuser/.local /home/appuser/.ssh /home/appuser/.config /app/goosetown /app/scripts \
+RUN chown -R appuser:appuser /home/appuser/.local /home/appuser/.ssh /home/appuser/.config /home/appuser/.gnupg /app/goosetown /app/scripts \
     && mkdir -p /home/appuser/.config/goose \
     && chown -R appuser:appuser /home/appuser/.config/goose
 

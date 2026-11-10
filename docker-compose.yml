@@ -123,13 +123,18 @@ services:
       # - ${HOME}/.kube:/home/appuser/.kube:ro
       # SSH keys for git/gh over ssh (requires uid match with appuser, 1000):
       # - ${HOME}/.ssh:/home/appuser/.ssh:ro
-      # GPG keyring - reuse host keys for commit signing / pass.
-      # Mount the whole host keyring (stale daemon sockets/locks from
-      # the host are cleaned at startup):
+      # GPG keyring - persists across container restarts (named volume).
+      # Reuse host keys (see README "Use your GPG keys"):
+      #  a) import an armored key export (recommended): mount the file
+      #     and set GPG_IMPORT_FILE in .env - the entrypoint imports it
+      #     into this volume on every start (idempotent)
+      #  b) mount the whole host keyring instead: comment the gnupg-data
+      #     volume line above AND uncomment here (stale daemon sockets and
+      #     locks from the host are cleaned at startup):
+      # - ${HOME}/.gnupg:/home/appuser/.gnupg
+      # key export mount for (a):
       # - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
-      # ...or import an armored key export instead (see GPG_IMPORT_FILE
-      # above; mount the export file and point GPG_IMPORT_FILE at it):
-      # - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
+      - gnupg-data:/home/appuser/.gnupg
     secrets:
       # Optional: LLM API key as a file (see the top-level secrets: block).
       # When LLM_API_KEY_FILE is unset this mounts an empty file
@@ -146,6 +151,7 @@ services:
 
 volumes:
   opencode-data:
+  gnupg-data:
 
 secrets:
   # API key as a file instead of an env var - keeps the key out of

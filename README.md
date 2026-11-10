@@ -445,11 +445,13 @@ container, there are two supported ways to reuse your host keys:
 
 ### Option A: mount the host keyring
 
-Uncomment the `~/.gnupg` volume in `docker-compose.yml`:
+Comment out the `gnupg-data` volume line in `docker-compose.yml` and
+mount the host keyring at the same path instead:
 
 ```yaml
 volumes:
-  - ${HOME}/.gnupg:/home/appuser/.gnupg
+  # - gnupg-data:/home/appuser/.gnupg      # container-local (default)
+  - ${HOME}/.gnupg:/home/appuser/.gnupg    # host keyring
 ```
 
 GnuPG keeps daemon state (sockets, lock files) in its home directory, and
@@ -483,25 +485,38 @@ gpg --armor --export-secret-keys YOURKEYID > ~/thoth-gpg-key.asc
 ```yaml
 # docker-compose.yml
 volumes:
+  # host path (left side) ──► container path (right side)
   - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
 environment:
+  # GPG_IMPORT_FILE must be the CONTAINER path - the right side of the
+  # volume mount - because the entrypoint reads it inside the container
   GPG_IMPORT_FILE: /home/appuser/gpg-key.asc
   # optional: mark imported keys as ultimately trusted
   # GPG_TRUST_IMPORTED: "1"
 ```
 
-The entrypoint imports the key into the container-local GNUPGHOME - no
-daemon state is shared with the host, so it works on every platform
-(including Docker Desktop for Mac). The key material lives in the
-`opencode-data` volume's home directory; remove the import file mount
-after the first start if you prefer.
+The entrypoint imports the key into the container's `~/.gnupg`, which is
+persisted in the `gnupg-data` named volume - the key survives container
+restarts. The import runs on every start and is idempotent (gpg
+de-duplicates), so keep the export file mounted; rotate it on the host
+and the container picks up the new key on the next start. No daemon state
+is shared with the host, so this works on every platform (including
+Docker Desktop for Mac).
+
+Keep the export file mounted: if `GPG_IMPORT_FILE` points at a path that
+is not mounted into the container, the entrypoint logs a warning and no
+key is imported.
 
 Verify inside the container:
 
 ```bash
-docker compose exec thoth gpg -k          # list keys
+docker compose exec thoth gpg -k          # lists your key (not just "trustdb created")
 docker compose exec thoth gpg --list-secret-keys
 ```
+
+> If `gpg -k` only prints `trustdb created` and no key block, the import
+> did not happen: check `docker compose logs thoth` for the
+> `gpg: imported keys from ...` line or the missing-mount warning.
 
 ## Repository notes
 
