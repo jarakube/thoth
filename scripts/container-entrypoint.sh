@@ -44,8 +44,10 @@ fi
 # The generated agent configs only REFERENCE the env var ({env:...} /
 # ${...}), so it must actually be present in the process environment.
 llm_key_env="${LLM_API_KEY_ENV:-CUSTOM_LITELLM_API_KEY}"
-if [ -z "${!llm_key_env:-}" ] && [ -s /run/secrets/llm_api_key ]; then
-  key_value="$(head -n1 /run/secrets/llm_api_key | tr -d '[:space:]')"
+# 2>/dev/null: on Docker Desktop for Mac the secret path can be a broken
+# symlink after `make up` removed its temp source file - never print noise
+if [ -z "${!llm_key_env:-}" ] && [ -s /run/secrets/llm_api_key ] 2>/dev/null; then
+  key_value="$(head -n1 /run/secrets/llm_api_key 2>/dev/null | tr -d '[:space:]')"
   if [ -n "$key_value" ]; then
     export "$llm_key_env"="$key_value"
     echo "Loaded ${llm_key_env} from /run/secrets/llm_api_key"

@@ -51,8 +51,14 @@ by [Jaraco GmbH](https://www.jaraco.de).
 By default the image installs the official `opencode-ai` release from npm. To
 use your own opencode build (e.g. a patched fork):
 
-1. Build the binary (see the [opencode repo](https://github.com/sst/opencode)):
+1. Build the binary (see the [opencode repo](https://github.com/sst/opencode));
+   for the Keycloak-enabled fork use
+   [jaracogmbh/opencode, branch `feature/34733/keycloak-sso-token-expiry-issue`](https://github.com/jaracogmbh/opencode/tree/feature/34733/keycloak-sso-token-expiry-issue)
+   (see [Configure OpenCode to use Keycloak](#configure-opencode-to-use-keycloak)):
    ```bash
+   git clone --branch feature/34733/keycloak-sso-token-expiry-issue \
+     https://github.com/jaracogmbh/opencode.git
+   cd opencode
    bun install && bun run build --single
    ```
 2. Place it at `build/opencode/opencode` in the repository root.
@@ -326,12 +332,14 @@ unfixed only); the scan runs on every push, not on pull requests.
 > **Note: this requires a custom OpenCode build.** The stock
 > `opencode-ai` release installed by default (via npm) does not include
 > the Keycloak authentication feature - `auth.keycloak` config and
-> `opencode auth login keycloak` come from a patched OpenCode fork. To
-> use this flow, build your own OpenCode binary with the Keycloak
-> patches and place it at `build/opencode/opencode` before building the
-> image (see [Use a custom opencode build](#use-a-custom-opencode-build));
-> the Dockerfile then uses it instead of the npm release. With the
-> stock npm release, this section does not apply.
+> `opencode auth login keycloak` come from a patched OpenCode fork. The
+> reference fork with the Keycloak patches is
+> [jaracogmbh/opencode (branch `feature/34733/keycloak-sso-token-expiry-issue`)](https://github.com/jaracogmbh/opencode/tree/feature/34733/keycloak-sso-token-expiry-issue).
+> Clone that branch, build the binary, and place it at
+> `build/opencode/opencode` before building the image (see
+> [Use a custom opencode build](#use-a-custom-opencode-build)); the
+> Dockerfile then uses it instead of the npm release. With the stock
+> npm release, this section does not apply.
 
 OpenCode in this image supports a global Keycloak login plus MCP server
 configs that reuse that bearer token.
