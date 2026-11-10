@@ -9,6 +9,10 @@ name: Ready for test
 # original pull_request event context, so the gate in build.yml stays in
 # charge. A dispatch would bypass the gate entirely.
 #
+# The gate condition is evaluated at STEP level, not job level: a comment
+# that does NOT match (non-owner, or different text) still runs the job
+# and prints an explanation, instead of showing an opaque "skipped" job.
+#
 # NOTE: this workflow must live on the default branch - GitHub only runs
 # issue_comment workflows from the default branch's version of the file.
 
@@ -23,15 +27,33 @@ permissions:
 jobs:
   ready-for-test:
     name: Re-run gated build
-    if: >-
-      github.event.issue.pull_request &&
-      github.event.comment.user.login == github.repository_owner &&
-      github.event.comment.body == 'ready for test'
+    # gate condition (owner + exact text + on a PR), as a step-level
+    # expression reused below - kept in sync manually
     runs-on: ubuntu-latest
     permissions:
       actions: write
     steps:
+      - name: Explain why no build was triggered (informational)
+        if: >-
+          !(github.event.issue.pull_request &&
+             github.event.comment.user.login == github.repository_owner &&
+             github.event.comment.body == 'ready for test')
+        run: |
+          echo "This comment did not trigger a build rerun:"
+          if [ "${{ github.event.issue.pull_request }}" != "true" ]; then
+            echo "  - it is not on a pull request"
+          elif [ "${{ github.event.comment.user.login }}" != "${{ github.repository_owner }}" ]; then
+            echo "  - '${{ github.event.comment.user.login }}' is not the repo owner ('${{ github.repository_owner }}')"
+          else
+            echo "  - the comment text is not exactly 'ready for test'"
+          fi
+          echo "Builds rerun only when the repository owner comments 'ready for test' on a PR."
+
       - name: Rerun the PR's Build workflow
+        if: >-
+          github.event.issue.pull_request &&
+          github.event.comment.user.login == github.repository_owner &&
+          github.event.comment.body == 'ready for test'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
