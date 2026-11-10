@@ -236,6 +236,27 @@ Details:
   agents against a LiteLLM proxy: goose via the `goose-litellm` wrapper,
   OpenCode via a custom `openai-compatible` provider (OpenCode has no
   native litellm provider - it connects to LiteLLM's OpenAI-compatible API)
+
+### One config for both agents
+
+OpenCode and goose need the same data to reach an LLM endpoint (URL, API
+key, model list) but store it differently. `scripts/sync-llm-config.sh`
+keeps them in sync from a **single source of truth** - the `LLM_*`
+environment variables - and runs automatically at container start:
+
+```bash
+# .env - configure once, both agents follow
+LLM_ENDPOINT=http://litellm-proxy:4000/v1   # includes /v1
+LLM_MODELS=mistral-small-latest mistral-large-latest
+CUSTOM_LITELLM_API_KEY=sk-...
+```
+
+The script writes the OpenCode custom provider config
+(`~/.config/opencode/opencode.json`), the goose provider selection
+(`~/.config/goose/config.yaml`, using goose's built-in `litellm`
+provider), and the shared `LITELLM_*` env for goose sessions. Unset
+`LLM_ENDPOINT` = no-op; each agent falls back to its own configuration.
+See [LITELLM_CONFIGURATION.md](LITELLM_CONFIGURATION.md) for details.
 - [GOOSETOWN_INTEGRATION.md](GOOSETOWN_INTEGRATION.md) - what the image sets
   up for goosetown (paths, wrappers, telepathy)
 - `configure-goose.sh` - helper to drive `goose configure` non-interactively

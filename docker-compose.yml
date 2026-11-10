@@ -65,9 +65,19 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
-      # LiteLLM proxy (used by goose-litellm)
+      # --- Shared LLM endpoint (single source of truth) -------------------
+      # Configure once; scripts/sync-llm-config.sh writes BOTH the OpenCode
+      # config (custom openai-compatible provider) and the goose config
+      # (built-in litellm provider) from these variables at container start.
+      # LLM_ENDPOINT must include the /v1 path, e.g. http://litellm-proxy:4000/v1
+      LLM_ENDPOINT: ${LLM_ENDPOINT:-}
+      # Name of the env var carrying the API key (referenced, not copied)
+      LLM_API_KEY_ENV: ${LLM_API_KEY_ENV:-CUSTOM_LITELLM_API_KEY}
+      # Space/comma-separated model IDs served by the endpoint
+      LLM_MODELS: ${LLM_MODELS:-mistral-small-latest mistral-large-latest}
+      LLM_DEFAULT_MODEL: ${LLM_DEFAULT_MODEL:-}
+      # The API key itself (read by both agents via the variable above)
       CUSTOM_LITELLM_API_KEY: ${CUSTOM_LITELLM_API_KEY:-}
-      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
       # Goose defaults
       GOOSE_LLM_PROVIDER: ${GOOSE_LLM_PROVIDER:-mistral}
       GOOSE_LLM_MODEL: ${GOOSE_LLM_MODEL:-mistral-small-latest}

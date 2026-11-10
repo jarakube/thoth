@@ -13,6 +13,34 @@ This document explains how to configure the agents in this container to use
   `openai-compatible` runtime package - see
   [Using LiteLLM with OpenCode](#using-litellm-with-opencode) below.
 
+## Keeping both in sync
+
+Both agents need the same data (endpoint URL, API key, model list), so
+this container configures them from a **single source of truth**: the
+`LLM_*` environment variables. `scripts/sync-llm-config.sh` runs at
+container start and writes both configs:
+
+| Source of truth (env) | OpenCode (generated) | goose (generated) |
+|---|---|---|
+| `LLM_ENDPOINT` (incl. `/v1`) | `provider.litellm.options.baseURL` in `~/.config/opencode/opencode.json` | `LITELLM_HOST` + `LITELLM_BASE_PATH` in `~/.config/goose/set-env.sh` |
+| `LLM_API_KEY_ENV` (default `CUSTOM_LITELLM_API_KEY`) | `provider.litellm.options.apiKey` (`{env:...}` reference) | `LITELLM_API_KEY` (same env reference) |
+| `LLM_MODELS` | `provider.litellm.models` map | `GOOSE_MODEL` default (first entry) |
+
+The script also sets `GOOSE_PROVIDER: litellm` in
+`~/.config/goose/config.yaml` (using goose's built-in litellm provider)
+unless a provider is already configured, and hooks the generated env into
+`~/.bashrc` so interactive shells see it.
+
+Behavior:
+
+- Unset `LLM_ENDPOINT` → no-op; both agents fall back to their own
+  configuration (goose via `goose-litellm`, OpenCode via `/connect`).
+- Re-running is safe: OpenCode's `provider.litellm` entry is regenerated
+  (user's other config keys preserved), goose's `GOOSE_MODEL` updated in
+  place.
+- After changing `LLM_*` in `.env`, restart the container
+  (`docker compose up -d`) to re-run the sync.
+
 ## What's Included (goose)
 
 The Dockerfile includes:
