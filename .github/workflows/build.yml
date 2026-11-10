@@ -5,7 +5,9 @@ on:
     branches:
       - main
   pull_request:
-  workflow_dispatch:
+  # NOTE: no workflow_dispatch on purpose - a dispatch on a PR branch
+  # would skip the build gate (event_name != 'pull_request'). The gate
+  # is the only path for PR image builds.
 
 env:
   REGISTRY: ghcr.io
@@ -16,8 +18,57 @@ permissions:
   packages: write
 
 jobs:
+  # Gate: on pull requests, image build/push only runs after the REPO
+  # OWNER (or an account with write/admin permission) has commented
+  # "ready for test" on the PR. Pushes to main always run.
+  build-gate:
+    name: Build gate (ready for test)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      approved: ${{ steps.gate.outputs.approved }}
+    steps:
+      - name: Check for owner "ready for test" comment
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Fetch all PR comments; approve only when the REPO OWNER has
+          # commented exactly "ready for test". Anyone can comment - only
+          # the owner's comment opens the gate.
+          comments="$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" --paginate)"
+          owner_login="$(gh api "repos/${REPO}" --jq '.owner.login')"
+          approved="false"
+          while IFS= read -r line; do
+            login="$(jq -r '.user.login' <<<"$line")"
+            body="$(jq -r '.body' <<<"$line")"
+            if [ "$body" = "ready for test" ] && [ "$login" = "$owner_login" ]; then
+              approved="true"
+              echo "Gate open: '${login}' commented 'ready for test'"
+              break
+            fi
+          done < <(jq -c '.[]' <<<"$comments" 2>/dev/null || echo "[]")
+          if [ "$approved" != "true" ]; then
+            echo "Build blocked: repo owner ('${owner_login}') has not commented 'ready for test' on PR #${PR_NUMBER}"
+          fi
+          echo "approved=${approved}" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build image
+    needs: build-gate
+    # build-gate is skipped on non-PR events, so its result is 'skipped'
+    # there - always() + the explicit condition keeps main-branch builds
+    # running while PR builds require the gate to have passed.
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' ||
+       needs.build-gate.outputs.approved == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

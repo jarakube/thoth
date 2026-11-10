@@ -1,0 +1,31 @@
+name: DCO
+
+# Developer Certificate of Origin: every commit must be signed off with
+#   git commit --signoff
+# producing a "Signed-off-by: Name <email>" trailer that matches the
+# commit's author. Docs: https://developercertificate.org/
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  dco:
+    name: DCO check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          # full history: the DCO check needs all commits, not a shallow clone
+          fetch-depth: 0
+
+      - name: DCO check
+        uses: christophebedard/dco-check@master
+        with:
+          args: "--verbose"

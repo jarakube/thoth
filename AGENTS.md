@@ -72,5 +72,8 @@ goosetown clone and MCP registration lines.
   question; agent CLI facts (flags, config formats, versions) change often.
 - Commit messages: conventional style, one line summary + body paragraphs
   (`feat:`, `fix:`, `docs:`, `chore:`).
+- Every commit MUST carry a `Signed-off-by: Name <email>` trailer
+  (DCO, https://developercertificate.org/): commit with
+  `git commit --signoff`. CI rejects unsigned commits.
 - Skills use the agent-skills standard: `<name>/SKILL.md` with `name` and
   `description` frontmatter.

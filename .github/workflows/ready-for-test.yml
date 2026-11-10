@@ -1,0 +1,54 @@
+name: Ready for test
+
+# Companion to the build gate in build.yml: when the repo owner comments
+# "ready for test" on a PR, rerun that PR's Build workflow so the gate
+# re-evaluates, finds the owner's comment, and lets the image build run -
+# without waiting for the contributor's next push.
+#
+# A rerun (not a workflow_dispatch) is deliberate: it preserves the
+# original pull_request event context, so the gate in build.yml stays in
+# charge. A dispatch would bypass the gate entirely.
+#
+# NOTE: this workflow must live on the default branch - GitHub only runs
+# issue_comment workflows from the default branch's version of the file.
+
+on:
+  issue_comment:
+    types:
+      - created
+
+permissions:
+  contents: read
+
+jobs:
+  ready-for-test:
+    name: Re-run gated build
+    if: >-
+      github.event.issue.pull_request &&
+      github.event.comment.user.login == github.repository_owner &&
+      github.event.comment.body == 'ready for test'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Rerun the PR's Build workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          set -euo pipefail
+          # Find the PR's head branch, locate its latest Build run, and
+          # rerun it. The rerun carries the original pull_request event,
+          # so build.yml's gate re-checks the comments and opens.
+          pr="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")"
+          head_ref="$(jq -r '.head.ref' <<<"$pr")"
+          run_id="$(gh run list --workflow Build.yml \
+            --branch "$head_ref" --event pull_request --limit 1 \
+            --json databaseId --jq '.[0].databaseId')"
+          if [ -n "$run_id" ] && [ "$run_id" != "null" ]; then
+            gh run rerun "$run_id"
+            echo "Rerunning Build run ${run_id} for PR #${PR_NUMBER} (branch ${head_ref}); the gate now finds the owner's 'ready for test' comment."
+          else
+            echo "No Build run found for PR #${PR_NUMBER} on ${head_ref} - push to the PR or open it first, then comment 'ready for test'."
+          fi

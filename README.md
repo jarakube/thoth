@@ -440,6 +440,12 @@ notes per agent.
 
 ## Repository notes
 
+- Every commit must be signed off (DCO): commit with
+  `git commit --signoff`, producing a `Signed-off-by: Name <email>`
+  trailer matching the commit author. CI rejects unsigned commits.
+- PR image builds are gated: the Build workflow only builds/pushes a PR's
+  image after the repository owner comments `ready for test` on the PR.
+  Pushes to `main` always build.
 - Add new skills under `skills/<name>/SKILL.md`; they will be copied into the
   image on build. See [skills/README.md](skills/README.md).
 - The goosetown directory is a git submodule: clone with
