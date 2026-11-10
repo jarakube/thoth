@@ -62,7 +62,7 @@ api_keys:
 # ============================================
 
 goose_settings:
-  provider: "${GOOSE_LLM_PROVIDER:-${OPENCODE_LLM_PROVIDER:-custom}}"
+  provider: "${GOOSE_LLM_PROVIDER:-${OPENCODE_LLM_PROVIDER:-mistral}}"
   model: "${GOOSE_LLM_MODEL:-${OPENCODE_LLM_MODEL:-mistral-small-latest}}"
   
   # Telemetry and logging
@@ -146,7 +146,7 @@ export GOOSE_MCP_ENABLED="${OPENCODE_MCP_ENABLED:-true}"
 export GOOSE_MCP_PORT="${OPENCODE_MCP_PORT:-3000}"
 
 echo "✅ Goose environment configured:"
-echo "   Provider: ${GOOSE_LLM_PROVIDER:-custom}"
+echo "   Provider: ${GOOSE_LLM_PROVIDER:-mistral}"
 echo "   Model: ${GOOSE_LLM_MODEL}"
 echo "   Telemetry: ${GOOSE_TELEMETRY}"
 echo "   Goosetown: ${GOOSETOWN_DIR}"
@@ -182,7 +182,7 @@ else
 fi
 
 # Run goose with the configured settings
-echo "🦆 Starting goose (Provider: ${GOOSE_LLM_PROVIDER:-custom}, Model: ${GOOSE_LLM_MODEL:-mistral-small-latest})"
+echo "🦆 Starting goose (Provider: ${GOOSE_LLM_PROVIDER:-mistral}, Model: ${GOOSE_LLM_MODEL:-mistral-small-latest})"
 goose "$@"
 WRAPPER_EOF
     

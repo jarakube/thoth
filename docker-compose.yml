@@ -69,7 +69,7 @@ services:
       CUSTOM_LITELLM_API_KEY: ${CUSTOM_LITELLM_API_KEY:-}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-}
       # Goose defaults
-      GOOSE_LLM_PROVIDER: ${GOOSE_LLM_PROVIDER:-custom}
+      GOOSE_LLM_PROVIDER: ${GOOSE_LLM_PROVIDER:-mistral}
       GOOSE_LLM_MODEL: ${GOOSE_LLM_MODEL:-mistral-small-latest}
       # Metrics exporter (see scripts/opencode-prometheus-exporter.py)
       OPENCODE_METRICS_ENABLED: ${OPENCODE_METRICS_ENABLED:-1}

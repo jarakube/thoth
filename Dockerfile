@@ -87,10 +87,22 @@ RUN chown -R appuser:appuser /home/appuser/.local /home/appuser/.ssh /home/appus
     && mkdir -p /home/appuser/.config/goose \
     && chown -R appuser:appuser /home/appuser/.config/goose
 
-# Create default LiteLLM configuration for goose
+# Create default LiteLLM configuration for goose.
+# Mistral models are the default: listed first, used as fallbacks, and
+# assumed when no provider key is set (GOOSE_LLM_MODEL default).
 RUN mkdir -p /home/appuser/.config/goose \
   && printf '%s\n' \
     'model_list:' \
+    '  - model_name: "mistral-small"' \
+    '    litellm_params:' \
+    '      model: "mistral/mistral-small-latest"' \
+    '      api_key: "${MISTRAL_API_KEY:-}"' \
+    '' \
+    '  - model_name: "mistral-large"' \
+    '    litellm_params:' \
+    '      model: "mistral/mistral-large-latest"' \
+    '      api_key: "${MISTRAL_API_KEY:-}"' \
+    '' \
     '  - model_name: "gpt-4"' \
     '    litellm_params:' \
     '      model: "openai/gpt-4"' \
@@ -118,22 +130,12 @@ RUN mkdir -p /home/appuser/.config/goose \
     '      model: "gemini/gemini-pro"' \
     '      api_key: "${GEMINI_API_KEY:-}"' \
     '' \
-    '  - model_name: "mistral-small"' \
-    '    litellm_params:' \
-    '      model: "mistral/mistral-small-latest"' \
-    '      api_key: "${MISTRAL_API_KEY:-}"' \
-    '' \
-    '  - model_name: "mistral-large"' \
-    '    litellm_params:' \
-    '      model: "mistral/mistral-large-latest"' \
-    '      api_key: "${MISTRAL_API_KEY:-}"' \
-    '' \
     'general_settings:' \
     '  master_key: "${LITELLM_MASTER_KEY:-}"' \
     '  database_url: "${LITELLM_DATABASE_URL:-sqlite:///./litellm.db}"' \
     '  default_fallback_models:' \
-    '    - "mistral-large-latest"' \
-    '    - "mistral-medium-latest"' \
+    '    - "mistral-large"' \
+    '    - "mistral-small"' \
     > /home/appuser/.config/goose/litellm-config.yaml
 
 # Create wrapper script for goose with LiteLLM support
@@ -145,7 +147,7 @@ RUN printf '%s\n' \
     '    source /home/appuser/.config/goose/set-env.sh' \
     'fi' \
     '' \
-    'export GOOSE_LLM_PROVIDER="${GOOSE_LLM_PROVIDER:-custom}"' \
+    'export GOOSE_LLM_PROVIDER="${GOOSE_LLM_PROVIDER:-mistral}"' \
     'export GOOSE_LLM_MODEL="${GOOSE_LLM_MODEL:-mistral-small-latest}"' \
     '' \
     'if ! command -v goose >/dev/null 2>&1; then' \
@@ -165,7 +167,7 @@ RUN chmod +x /usr/local/bin/goose-litellm
 # (plus GUIDES_DIR/PLANS_DIR/RESEARCH_DIR/WORK_LOGS_DIR) pointing at it.
 # /app/goosetown remains in the image only as a tooling fallback.
 RUN echo 'export PATH="/usr/local/bin:$PATH"' >> /home/appuser/.bashrc \
-    && echo 'export GOOSE_LLM_PROVIDER="${GOOSE_LLM_PROVIDER:-custom}"' >> /home/appuser/.bashrc \
+    && echo 'export GOOSE_LLM_PROVIDER="${GOOSE_LLM_PROVIDER:-mistral}"' >> /home/appuser/.bashrc \
     && echo 'export GOOSE_LLM_MODEL="${GOOSE_LLM_MODEL:-mistral-small-latest}"' >> /home/appuser/.bashrc \
     && echo 'export GOOSE_NO_ANALYTICS="1"' >> /home/appuser/.bashrc
 

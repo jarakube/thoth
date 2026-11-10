@@ -135,9 +135,8 @@ LiteLLM supports routing strategies and fallback models. You can configure this 
 ```yaml
 general_settings:
   default_fallback_models:
-    - "gpt-3.5-turbo"
-    - "claude-3-sonnet"
-    - "gemini-pro"
+    - "mistral-large"
+    - "mistral-small"
 
 router_settings:
   routing_strategy: "usage-based"
@@ -160,7 +159,7 @@ router_settings:
 
 | Variable | Description | Default Value |
 |----------|-------------|---------------|
-| `GOOSE_LLM_PROVIDER` | LLM provider to use | `custom` |
+| `GOOSE_LLM_PROVIDER` | LLM provider to use | `mistral` |
 | `GOOSE_LLM_MODEL` | Specific model to use | `mistral-small-latest` |
 | `LITELLM_CONFIG_FILE` | Path to LiteLLM config | `/home/appuser/.config/goose/litellm-config.yaml` |
 
@@ -276,7 +275,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 export GEMINI_API_KEY="..."
 
 # Configure LiteLLM config for fallback
-export GOOSE_LLM_PROVIDER="custom"
+export GOOSE_LLM_PROVIDER="mistral"
 
 # Run goose - it will use the best available model
 goose-litellm session "Analyze this entire codebase"

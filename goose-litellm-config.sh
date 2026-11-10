@@ -16,6 +16,16 @@ cat > /home/appuser/.config/goose/litellm-config.yaml << 'EOF'
 # This file configures goose to use LiteLLM as the LLM provider
 
 model_list:
+  - model_name: "mistral-small"
+    litellm_params:
+      model: "mistral/mistral-small-latest"
+      api_key: "${MISTRAL_API_KEY:-}"
+
+  - model_name: "mistral-large"
+    litellm_params:
+      model: "mistral/mistral-large-latest"
+      api_key: "${MISTRAL_API_KEY:-}"
+
   - model_name: "gpt-4"
     litellm_params:
       model: "openai/gpt-4"
@@ -43,16 +53,6 @@ model_list:
       model: "gemini/gemini-pro"
       api_key: "${GEMINI_API_KEY:-}"
 
-  - model_name: "mistral-small"
-    litellm_params:
-      model: "mistral/mistral-small-latest"
-      api_key: "${MISTRAL_API_KEY:-}"
-
-  - model_name: "mistral-large"
-    litellm_params:
-      model: "mistral/mistral-large-latest"
-      api_key: "${MISTRAL_API_KEY:-}"
-
   - model_name: "local-llama"
     litellm_params:
       model: "ollama/llama3"
@@ -63,8 +63,8 @@ general_settings:
   database_url: "${LITELLM_DATABASE_URL:-sqlite:///./litellm.db}"
   redis_url: "${REDIS_URL:-}"
   default_fallback_models:
-    - "gpt-3.5-turbo"
-    - "claude-3-sonnet"
+    - "mistral-large"
+    - "mistral-small"
 
 router_settings:
   routing_strategy: "usage-based"
@@ -78,7 +78,9 @@ cat > /home/appuser/.config/goose/set-env.sh << 'EOF'
 #!/bin/bash
 # Set up environment variables for goose with LiteLLM
 
-# Export environment variables for LiteLLM
+# Export environment variables for LiteLLM.
+# Mistral is the default: its block comes last so MISTRAL_API_KEY wins
+# when several provider keys are set, and it is the fallback when none are.
 if [ -n "${OPENAI_API_KEY:-}" ]; then
     export LITELLM_PROVIDER="openai"
     export LITELLM_MODEL="${OPENAI_MODEL:-gpt-4}"
@@ -99,9 +101,9 @@ if [ -n "${MISTRAL_API_KEY:-}" ]; then
     export LITELLM_MODEL="${MISTRAL_MODEL:-mistral-small}"
 fi
 
-# Set default values if not set
+# Set default values if not set (mistral default when no provider key matched)
 export LITELLM_CONFIG_FILE="/home/appuser/.config/goose/litellm-config.yaml"
-export GOOSE_LLM_PROVIDER="${LITELLM_PROVIDER:-custom}"
+export GOOSE_LLM_PROVIDER="${LITELLM_PROVIDER:-mistral}"
 export GOOSE_LLM_MODEL="${LITELLM_MODEL:-mistral-small-latest}"
 
 echo "✅ LiteLLM environment configured"
@@ -124,8 +126,8 @@ if [ -f "/home/appuser/.config/goose/set-env.sh" ]; then
     source /home/appuser/.config/goose/set-env.sh
 fi
 
-# Export additional environment variables for goose
-export GOOSE_LLM_PROVIDER="${GOOSE_LLM_PROVIDER:-custom}"
+# Export additional environment variables for goose (mistral defaults)
+export GOOSE_LLM_PROVIDER="${GOOSE_LLM_PROVIDER:-mistral}"
 export GOOSE_LLM_MODEL="${GOOSE_LLM_MODEL:-mistral-small-latest}"
 
 # Check if goose binary exists
