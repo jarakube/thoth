@@ -187,6 +187,12 @@ RUN printf '%s\n' \
     '    cat "$HOME/.config/thoth-banner.txt"' \
     'fi' >> /home/appuser/.bashrc
 
+# GPG pinentry needs to know the terminal of the interactive shell;
+# without GPG_TTY, pinentry-curses fails with "No TTY available" even
+# in a docker compose exec bash session
+RUN printf '%s\n' \
+    'export GPG_TTY=$(tty 2>/dev/null || true)' >> /home/appuser/.bashrc
+
 EXPOSE 9464
 USER appuser
 WORKDIR /app

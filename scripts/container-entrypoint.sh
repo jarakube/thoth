@@ -99,6 +99,26 @@ main() {
     gpg_clean_dead_daemon_state "$gnupg_home"
   fi
 
+  # Pinentry: the container has no X display, so use the terminal-based
+  # pinentry (pinentry-curses). Without this, signing a passphrase-
+  # protected key in a non-TTY context fails with
+  # "No TTY available for GPG pinentry" / "Inappropriate ioctl for device".
+  # - interactive shells: pinentry-curses prompts on the terminal
+  #   (GPG_TTY is exported via .bashrc below)
+  # - scripted/agent contexts (git commit -S from opencode/goose, no TTY):
+  #   allow-loopback-pinentry lets gpg fall back to asking through its
+  #   own pipe (--pinentry-mode loopback)
+  if [ -d "$gnupg_home" ]; then
+    if ! grep -q "^pinentry-program" "$gnupg_home/gpg-agent.conf" 2>/dev/null; then
+      echo "pinentry-program /usr/bin/pinentry-curses" >> "$gnupg_home/gpg-agent.conf"
+    fi
+    if ! grep -q "^allow-loopback-pinentry" "$gnupg_home/gpg-agent.conf" 2>/dev/null; then
+      echo "allow-loopback-pinentry" >> "$gnupg_home/gpg-agent.conf"
+    fi
+    # reload the agent config if the agent is already running
+    gpg-connect-agent reloadagent /bye >/dev/null 2>&1 || true
+  fi
+
   # Export the LLM API key into the container environment (PID 1 context,
   # inherited by every opencode/goose process and shell). Resolution order:
   # 1. env var already set (compose environment) - keep it

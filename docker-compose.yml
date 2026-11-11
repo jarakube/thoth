@@ -122,7 +122,9 @@ services:
       # Kubernetes cluster access:
       # - ${HOME}/.kube:/home/appuser/.kube:ro
       # SSH keys for git/gh over ssh (requires uid match with appuser, 1000):
-      # - ${HOME}/.ssh:/home/appuser/.ssh:ro
+      - ${HOME}/.ssh:/home/appuser/.ssh:ro
+      # Host git config (identity, signing key, aliases):
+      # - ${HOME}/.gitconfig:/home/appuser/.gitconfig:ro
       # GPG keyring - persists across container restarts (named volume).
       # Reuse host keys (see README "Use your GPG keys"):
       #  a) import an armored key export (recommended): mount the file
