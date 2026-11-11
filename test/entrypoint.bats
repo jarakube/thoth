@@ -109,3 +109,11 @@ import time; time.sleep(30)
   grep -q "suricata/logs/\*" .gitignore
   grep -q "suricata/data/\*" .gitignore
 }
+
+@test "suricata: report script runs against the sample log" {
+  [ -f suricata/logs/eve.json ] || skip "no eve.json (sidecar not run)"
+  run ./scripts/suricata-report.sh
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"Connections by host"* ]]
+  [[ "$output" == *"EGRESS"* ]]
+}

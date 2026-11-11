@@ -12,7 +12,7 @@ HOST_GID := $(shell id -g)
 # point LLM_API_KEY_FILE at a file yourself.
 PASS_LLM_ENTRY ?= llm/thoth-api-key
 
-.PHONY: up down build shell run logs ps clean test suricata-init suricata-up suricata-down
+.PHONY: up down build shell run logs ps clean test suricata-init suricata-up suricata-down suricata-report
 
 # --- Suricata IDS sidecar (opt-in) ----------------------------------------
 
@@ -25,6 +25,11 @@ suricata-init:
 suricata-up:
 	HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) \
 	  docker compose -f docker-compose.yml -f docker-compose.suricata.yml up -d
+
+# Overview report of the captured traffic: hosts, egress/ingress
+# volumes, recent connections (from suricata/logs/eve.json)
+suricata-report:
+	./scripts/suricata-report.sh
 
 # Stop both (config/logs/data persist on the host)
 suricata-down:
