@@ -1,0 +1,38 @@
+name: Test
+
+# Unit tests for the entrypoint and sync scripts (bats) plus shellcheck
+# linting. Runs on every push and pull_request - independent of the
+# image build gate (test failures block the PR regardless of the
+# ready-for-test approval).
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    name: Unit tests (bats + shellcheck)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install bats and shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats shellcheck
+
+      - name: Shellcheck
+        run: |
+          # entrypoint is sourced by tests (functions + main guard), so
+          # override the source-guard warning
+          shellcheck --severity=error scripts/*.sh test/run-tests.sh || {
+            echo "shellcheck found errors"; exit 1; }
+
+      - name: Unit tests
+        run: ./test/run-tests.sh

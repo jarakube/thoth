@@ -12,7 +12,12 @@ HOST_GID := $(shell id -g)
 # point LLM_API_KEY_FILE at a file yourself.
 PASS_LLM_ENTRY ?= llm/thoth-api-key
 
-.PHONY: up down build shell run logs ps clean
+.PHONY: up down build shell run logs ps clean test
+
+# Unit tests (bats) for the entrypoint and sync scripts - host-side,
+# no container needed; test/run-tests.sh installs bats if missing
+test:
+	./test/run-tests.sh
 
 # Start the agent in the background (builds if needed).
 # When `pass` is installed and the entry PASS_LLM_ENTRY exists, the LLM
