@@ -82,3 +82,30 @@ import time; time.sleep(30)
   [ -f "$TEST_DIR/gnupg/pubring.kbx" ]
   [ -f "$TEST_DIR/gnupg/common.conf" ]
 }
+
+# --- suricata sidecar (compose + config wiring) -----------------------------
+
+@test "suricata: override compose file is valid and shares thoth's namespace" {
+  run docker compose -f docker-compose.yml -f docker-compose.suricata.yml config --quiet
+  [ "$status" -eq 0 ]
+  run docker compose -f docker-compose.yml -f docker-compose.suricata.yml config --format json
+  [ "$status" -eq 0 ]
+  # network_mode must reference the thoth service
+  [[ "$output" == *"service:thoth"* ]]
+}
+
+@test "suricata: versioned config exists and has the EVE types" {
+  [ -f suricata/config/suricata.yaml ]
+  grep -q "eve-log:" suricata/config/suricata.yaml
+  grep -q "\- flow" suricata/config/suricata.yaml
+  grep -q "\- dns:" suricata/config/suricata.yaml
+  grep -q "\- tls:" suricata/config/suricata.yaml
+  grep -q "\- http:" suricata/config/suricata.yaml
+  # rules off by default
+  grep -q "rule-files: \[\]" suricata/config/suricata.yaml
+}
+
+@test "suricata: runtime dirs are gitignored, config is not" {
+  grep -q "suricata/logs/\*" .gitignore
+  grep -q "suricata/data/\*" .gitignore
+}

@@ -576,6 +576,47 @@ store during a session, mount the store read-only
 (`- ${HOME}/.password-store:/home/appuser/.password-store:ro`) and read
 the entries with `gpg -d`, or pass values in as environment variables.
 
+## Network monitoring (Suricata, opt-in)
+
+A Suricata IDS sidecar can passively monitor the agent's network traffic
+- every LLM API call, DNS lookup, and egress connection the agents make
+- without touching the application or routing traffic through a proxy.
+It shares thoth's network namespace and writes structured EVE JSON
+events (flow, dns, tls, http, alert, stats) to `suricata/logs/eve.json`.
+
+```bash
+make suricata-init    # validate the versioned sensor config
+make suricata-up      # start thoth + the suricata sidecar
+make suricata-down    # stop both (logs persist in suricata/logs/)
+
+# inspect what the agents have been talking to
+jq -r 'select(.event_type == "tls") | .tls.sni // empty' suricata/logs/eve.json | sort -u
+jq -r 'select(.event_type == "flow") | [.src_ip, .dest_ip, .dest_port] | @tsv' suricata/logs/eve.json | tail -20
+```
+
+The sensor configuration (`suricata/config/suricata.yaml`) is
+version-controlled and reviewed - no generated state. Detection rules
+are OFF by default (`rule-files: []`): without signatures you get
+flow/dns/tls/http/stats events but no alerts; enable rules with
+`suricata-update` inside the running sidecar and add them to
+`rule-files` (see the
+[suricata-update docs](https://docs.suricata.io/en/latest/rule-management/suricata-update.html)).
+
+Caveats worth knowing (full reference:
+[docs/suricata-docker-compose-integration.md](docs/suricata-docker-compose-integration.md)):
+
+- **Passive IDS, not a firewall** - it observes; it never blocks.
+- **DNS blind spot**: Docker's embedded resolver answers on loopback
+  (`127.0.0.11`), which `eth0` capture does not see - many DNS queries
+  will be invisible.
+- **`depends_on` is not sensor readiness** - traffic from thoth's
+  startup may be missed; restart the sidecar for a clean capture window.
+- The sidecar adds `NET_ADMIN`/`NET_RAW`/`SYS_NICE` capabilities - a
+  real privilege grant, which is why it is opt-in and never part of
+  plain `make up`.
+- Log retention: `eve.json` grows indefinitely; rotate or ship to a
+  SIEM before long-running deployments.
+
 ## Repository notes
 
 - [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt): documentation

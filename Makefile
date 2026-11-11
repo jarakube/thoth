@@ -12,7 +12,23 @@ HOST_GID := $(shell id -g)
 # point LLM_API_KEY_FILE at a file yourself.
 PASS_LLM_ENTRY ?= llm/thoth-api-key
 
-.PHONY: up down build shell run logs ps clean test
+.PHONY: up down build shell run logs ps clean test suricata-init suricata-up suricata-down
+
+# --- Suricata IDS sidecar (opt-in) ----------------------------------------
+
+# One-time: validate the versioned sensor config (suricata/config/)
+suricata-init:
+	./scripts/init-suricata.sh
+
+# Start thoth + the suricata sidecar (shares thoth's network namespace,
+# passively captures on eth0, writes suricata/logs/eve.json)
+suricata-up:
+	HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) \
+	  docker compose -f docker-compose.yml -f docker-compose.suricata.yml up -d
+
+# Stop both (config/logs/data persist on the host)
+suricata-down:
+	docker compose -f docker-compose.yml -f docker-compose.suricata.yml down
 
 # Unit tests (bats) for the entrypoint and sync scripts - host-side,
 # no container needed; test/run-tests.sh installs bats if missing

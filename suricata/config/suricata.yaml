@@ -1,0 +1,61 @@
+%YAML 1.1
+---
+# thoth Suricata sensor configuration (versioned, reviewed).
+#
+# Minimal config tuned for passive monitoring of the thoth agent
+# container: EVE JSON events for flow, dns, tls, http, alert, stats.
+# The jasonish/suricata image mounts this at /etc/suricata/suricata.yaml.
+#
+# No rules are configured by default (rule-files: []) - without
+# signatures there are no alert events, only flow/dns/tls/http/stats.
+# See the README "Network monitoring" section for enabling rules via
+# suricata-update.
+
+vars:
+  address-groups:
+    # passive sensor on a container bridge network: observe everything
+    HOME_NET: "any"
+    EXTERNAL_NET: "any"
+  port-groups:
+    HTTP_PORTS: "[80,8080]"
+
+outputs:
+  - fast:
+      enabled: yes
+      filename: fast.log
+
+  # Extensible Event Format (EVE) JSON - the primary output.
+  # Inspect with jq: 'jq -r .event_type suricata/logs/eve.json | sort | uniq -c'
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      community-id: true
+      types:
+        - alert
+        - anomaly:
+            enabled: yes
+        - flow
+        - dns:
+            enabled: yes
+            requests: yes
+            responses: yes
+        - tls:
+            extended: yes
+        - http:
+            extended: yes
+        - stats:
+            totals: yes
+            threads: no
+
+  - stats:
+      enabled: yes
+      filename: stats.log
+
+# sensor identification in events
+affiliation:
+  sensor-name: thoth
+
+# rules: none by default; enable via suricata-update + rule-files
+default-rule-path: /var/lib/suricata/rules
+rule-files: []
