@@ -119,6 +119,43 @@ main() {
     gpg-connect-agent reloadagent /bye >/dev/null 2>&1 || true
   fi
 
+  # Beads (bd) graph issue tracker for agents.
+  # Resolution order:
+  #   1. the project's own .beads/ under /workspace (project-managed)
+  #   2. BEADS_DIR env (explicit override)
+  #   3. default: /data/beads/.beads in the beads-data docker volume -
+  #      created on first start if missing, persisted across restarts
+  # The chosen directory is exported as BEADS_DIR so bd (and agents
+  # reading it, e.g. via bd prime) find the database without
+  # git-repo discovery.
+  # resolution: explicit BEADS_DIR (from .env) is respected; else the
+  # project's .beads under /workspace wins; else the volume default
+  if [ -z "${BEADS_DIR:-}" ]; then
+    if [ -d /workspace/.beads ]; then
+      export BEADS_DIR="/workspace/.beads"
+      echo "beads: using project database at $BEADS_DIR"
+    else
+      export BEADS_DIR="/data/beads/.beads"
+    fi
+  fi
+  if [ ! -d "$BEADS_DIR" ]; then
+    # bd init works on the CURRENT directory (no path argument); with
+    # BEADS_DIR exported it places the database there. --stealth skips
+    # git integration (the default volume is not a git repo).
+    mkdir -p "$(dirname "$BEADS_DIR")"
+    if (cd "$(dirname "$BEADS_DIR")" && bd init --quiet --stealth) >/dev/null 2>&1; then
+      echo "beads: initialized new database at $BEADS_DIR"
+    else
+      echo "WARNING: beads init failed at $BEADS_DIR" >&2
+    fi
+  fi
+  # persist for interactive shells (docker compose exec): they do not
+  # inherit PID 1's exports
+  if [ -f "$HOME/.bashrc" ] && ! grep -q "BEADS_DIR=" "$HOME/.bashrc" 2>/dev/null; then
+    printf '\n# Beads database location (set by the container entrypoint)\nexport BEADS_DIR="%s"\n' \
+      "$BEADS_DIR" >> "$HOME/.bashrc"
+  fi
+
   # Export the LLM API key into the container environment (PID 1 context,
   # inherited by every opencode/goose process and shell). Resolution order:
   # 1. env var already set (compose environment) - keep it

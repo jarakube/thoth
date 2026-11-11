@@ -44,6 +44,11 @@ RUN GOOSE_VERSION=${GOOSE_VERSION} GOOSE_BIN_DIR=/usr/local/bin /usr/local/bin/i
 # before building (see README "Use a custom opencode build") and comment
 # the npm install line below.
 RUN npm install -g opencode-ai@latest
+
+# Beads (bd): graph issue tracker for agents. Initialized at container
+# start into the beads-data volume (or the project's .beads/ if present)
+# - see scripts/container-entrypoint.sh.
+RUN npm install -g @beads/bd
 # COPY --chmod=755 build/opencode/opencode /usr/local/bin/opencode
 
 # Install goosetown
@@ -78,6 +83,11 @@ RUN if getent group appuser >/dev/null 2>&1; then true; \
 RUN mkdir -p /home/appuser/.local/share/opencode/skills /home/appuser/.local/share/opencode/repos /home/appuser/.ssh /home/appuser/.config/goosetown /home/appuser/.gnupg \
     && chmod 700 /home/appuser/.gnupg \
     && chown -R appuser:appuser /home/appuser/.gnupg
+
+# /data/beads must exist in the image so the beads-data compose volume
+# inherits appuser ownership on first use (fresh named volumes are
+# root-owned without image content at the mount path)
+RUN mkdir -p /data/beads && chown -R appuser:appuser /data/beads
 RUN ssh-keyscan github.com >> /home/appuser/.ssh/known_hosts
 COPY --chown=appuser:appuser skills/ /home/appuser/.config/opencode/skills/
 COPY --chown=appuser:appuser scripts/ /app/scripts/

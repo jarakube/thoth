@@ -442,6 +442,174 @@ See [docs/agents.md](docs/agents.md) for install commands, skills
 locations, MCP config formats, derived-image recipes, and authentication
 notes per agent.
 
+### Use your GPG keys
+
+To sign commits (or use `pass` with your existing keys) inside the
+container, there are two supported ways to reuse your host keys:
+
+#### Option A: mount the host keyring
+
+Comment out the `gnupg-data` volume line in `docker-compose.yml` and
+mount the host keyring at the same path instead:
+
+```yaml
+volumes:
+  # - gnupg-data:/home/appuser/.gnupg      # container-local (default)
+  - ${HOME}/.gnupg:/home/appuser/.gnupg    # host keyring
+```
+
+GnuPG keeps daemon state (sockets, lock files) in its home directory, and
+that state does not survive bind mounts - a host `S.keyboxd` socket is a
+dead file inside the container, which makes gpg fail with
+`can't connect to keyboxd` or hang on stale locks. The container
+entrypoint detects and removes dead sockets and stale cross-machine lock
+files at startup, so the container-side daemons (`keyboxd`, `gpg-agent`)
+launch cleanly with the mounted keyring.
+
+Notes:
+
+- The mount is read-write; gpg needs to create its sockets and update
+  trustdb inside the directory.
+- Do not run gpg on the host and in the container simultaneously against
+  the same keyring - the daemons would fight over locks. Not recommended
+  on Docker Desktop for Mac (VirtioFS degrades sockets further); use
+  option B there.
+- Requires the uid match (the image is built with your uid via
+  `make up`).
+
+#### Option B: import a key export (recommended, works everywhere)
+
+Export the secret key on the host and import it at container start:
+
+```bash
+# host: armored export of your key (prompts for the passphrase)
+gpg --armor --export-secret-keys YOURKEYID > ~/thoth-gpg-key.asc
+```
+
+```yaml
+# docker-compose.yml
+volumes:
+  # host path (left side) ──► container path (right side)
+  - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
+environment:
+  # GPG_IMPORT_FILE must be the CONTAINER path - the right side of the
+  # volume mount - because the entrypoint reads it inside the container
+  GPG_IMPORT_FILE: /home/appuser/gpg-key.asc
+  # optional: mark imported keys as ultimately trusted
+  # GPG_TRUST_IMPORTED: "1"
+```
+
+The entrypoint imports the key into the container's `~/.gnupg`, which is
+persisted in the `gnupg-data` named volume - the key survives container
+restarts. The import runs on every start and is idempotent (gpg
+de-duplicates), so keep the export file mounted; rotate it on the host
+and the container picks up the new key on the next start. No daemon state
+is shared with the host, so this works on every platform (including
+Docker Desktop for Mac).
+
+Keep the export file mounted: if `GPG_IMPORT_FILE` points at a path that
+is not mounted into the container, the entrypoint logs a warning and no
+key is imported.
+
+Verify inside the container:
+
+```bash
+docker compose exec thoth gpg -k          # lists your key (not just "trustdb created")
+docker compose exec thoth gpg --list-secret-keys
+```
+
+> If `gpg -k` only prints `trustdb created` and no key block, the import
+> did not happen: check `docker compose logs thoth` for the
+> `gpg: imported keys from ...` line or the missing-mount warning.
+
+#### Complete example configuration
+
+Option B end to end - host export, compose wiring, git signing, and
+optional `pass` use:
+
+```bash
+# 1. host: export your key (armored, prompts for the passphrase)
+gpg --armor --export-secret-keys YOURKEYID > ~/thoth-gpg-key.asc
+```
+
+```yaml
+# 2. .env
+GPG_IMPORT_FILE=/home/appuser/gpg-key.asc
+GPG_TRUST_IMPORTED=1        # optional: ultimate ownertrust for the key
+```
+
+```yaml
+# 3. docker-compose.yml
+services:
+  thoth:
+    volumes:
+      - gnupg-data:/home/appuser/.gnupg                 # default: persisted keyring
+      - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
+```
+
+```bash
+# 4. start and verify
+make up
+docker compose logs thoth | grep gpg
+#   gpg: imported keys from /home/appuser/gpg-key.asc
+#   gpg: git signing configured (user.signingkey=..., commit.gpgsign=true)
+docker compose exec thoth gpg -k
+```
+
+What the entrypoint configures automatically after the import:
+
+- **git commit signing**: when exactly one secret key is present,
+  `user.signingkey` is set to its fingerprint and `commit.gpgsign` /
+  `tag.gpgsign` are enabled - every `git commit` and `git tag` inside the
+  container is signed. With multiple keys nothing is guessed; set
+  `git config --global user.signingkey <fpr>` yourself.
+- The git identity (`user.email`/`user.name`) stays the image default
+  (`agent@example.com` / `agent`) - override it to match the key's uid:
+  ```bash
+  docker compose exec thoth git config --global user.email "you@example.com"
+  docker compose exec thoth git config --global user.name "Your Name"
+  ```
+  or set it in `.gitconfig` and mount it over `/home/appuser/.gitconfig`.
+
+Note on `pass`: the password store lives on the **host** - this design
+uses it only from there (see
+[Keeping the API key out of .env](#keeping-the-api-key-out-of-env-pass--compose-secrets),
+where `make up` reads the LLM key from the host's pass store). `pass` is
+not installed inside the container; if you need secrets from the host
+store during a session, mount the store read-only
+(`- ${HOME}/.password-store:/home/appuser/.password-store:ro`) and read
+the entries with `gpg -d`, or pass values in as environment variables.
+
+### Beads issue tracker (bd)
+
+The container ships [beads](https://github.com/gastownhall/beads) (`bd`)
+- a graph issue tracker for coding agents (Dolt-backed, dependency-aware).
+`bd` is available in every shell; agents discover the workflow via
+`bd prime`.
+
+Database resolution at container start:
+
+| Condition | BEADS_DIR |
+|---|---|
+| `BEADS_DIR` set in `.env` | respected as-is (explicit override) |
+| project has `workspace/.beads/` | `/workspace/.beads` (project-managed) |
+| otherwise | `/data/beads/.beads` - **created on first start** in the `beads-data` docker volume, persisted across restarts |
+
+The resolved location is exported as `BEADS_DIR` (entrypoint session
+and `.bashrc`), so `bd` needs no git-repo discovery.
+
+```bash
+# verify
+docker compose exec thoth bash
+bd ready            # claimable work
+bd create "Fix the thing" -p 1 -t bug
+bd prime            # workflow context for agents
+```
+
+To seed issues from a git repo or sync across machines, see
+`bd dolt push/pull` in the
+[beads docs](https://beads.gascity.com/).
+
 ### Repository notes
 
 - [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt): documentation
@@ -450,9 +618,11 @@ notes per agent.
 - Every commit must be signed off (DCO): commit with
   `git commit --signoff`, producing a `Signed-off-by: Name <email>`
   trailer matching the commit author. CI rejects unsigned commits.
-- PR image builds are gated: the Build workflow only builds/pushes a PR's
-  image after the repository owner comments `ready for test` on the PR.
-  Pushes to `main` always build.
+- PR jobs are gated: both the Test (unit tests) and Build (image)
+  workflows run on a PR only after the repository owner comments
+  `ready for test` on it. The approval is per-commit state: pushing new
+  commits to the PR invalidates it, and the owner must comment
+  `ready for test` again. Pushes to `main` always run.
 - Add new skills under `skills/<name>/SKILL.md`; they will be copied into the
   image on build. See [skills/README.md](skills/README.md).
 - The goosetown directory is a git submodule: clone with

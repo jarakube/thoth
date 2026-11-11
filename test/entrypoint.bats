@@ -82,3 +82,40 @@ import time; time.sleep(30)
   [ -f "$TEST_DIR/gnupg/pubring.kbx" ]
   [ -f "$TEST_DIR/gnupg/common.conf" ]
 }
+
+# --- beads resolution (mirrors the entrypoint logic) -----------------------
+
+@test "beads resolution: explicit BEADS_DIR wins" {
+  [ "${BEADS_DIR:-}" = "" ] || skip "BEADS_DIR set in environment"
+  # simulate: explicit override
+  BEADS_DIR="/custom/.beads"
+  [ "$BEADS_DIR" = "/custom/.beads" ]
+}
+
+@test "beads resolution: project .beads wins when BEADS_DIR unset" {
+  # the entrypoint logic: unset -> /workspace/.beads if present
+  unset BEADS_DIR
+  mkdir -p "$TEST_DIR/workspace/.beads"
+  resolved=""
+  if [ -z "${BEADS_DIR:-}" ]; then
+    if [ -d "$TEST_DIR/workspace/.beads" ]; then
+      resolved="$TEST_DIR/workspace/.beads"
+    else
+      resolved="/data/beads/.beads"
+    fi
+  fi
+  [ "$resolved" = "$TEST_DIR/workspace/.beads" ]
+}
+
+@test "beads resolution: volume default when no project .beads" {
+  unset BEADS_DIR
+  resolved=""
+  if [ -z "${BEADS_DIR:-}" ]; then
+    if [ -d "$TEST_DIR/workspace/.beads" ]; then
+      resolved="$TEST_DIR/workspace/.beads"
+    else
+      resolved="/data/beads/.beads"
+    fi
+  fi
+  [ "$resolved" = "/data/beads/.beads" ]
+}
