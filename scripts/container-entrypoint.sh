@@ -103,6 +103,22 @@ if [ -n "${GPG_IMPORT_FILE:-}" ] && [ -s "$GPG_IMPORT_FILE" ]; then
   else
     echo "WARNING: gpg import from $GPG_IMPORT_FILE failed" >&2
   fi
+
+  # If exactly ONE secret key is available, wire it into git signing so
+  # `git commit -S` / `git tag -s` work out of the box. With multiple
+  # keys we do not guess - set user.signingkey yourself.
+  if [ -z "$(git config --global user.signingkey 2>/dev/null || true)" ]; then
+    primary_fpr="$(gpg --list-secret-keys --with-colons 2>/dev/null \
+      | awk -F: '/^fpr:/ {print $10; exit}')"
+    secret_count="$(gpg --list-secret-keys --with-colons 2>/dev/null \
+      | awk -F: '/^sec:/ {c++} END {print c+0}')"
+    if [ -n "$primary_fpr" ] && [ "$secret_count" -eq 1 ]; then
+      git config --global user.signingkey "$primary_fpr"
+      git config --global commit.gpgsign true
+      git config --global tag.gpgsign true
+      echo "gpg: git signing configured (user.signingkey=$primary_fpr, commit.gpgsign=true)"
+    fi
+  fi
 else
   # Mount mode: clean dead daemon state so container-side daemons start
   gpg_clean_dead_daemon_state "$gnupg_home"

@@ -518,6 +518,64 @@ docker compose exec thoth gpg --list-secret-keys
 > did not happen: check `docker compose logs thoth` for the
 > `gpg: imported keys from ...` line or the missing-mount warning.
 
+### Complete example configuration
+
+Option B end to end - host export, compose wiring, git signing, and
+optional `pass` use:
+
+```bash
+# 1. host: export your key (armored, prompts for the passphrase)
+gpg --armor --export-secret-keys YOURKEYID > ~/thoth-gpg-key.asc
+```
+
+```yaml
+# 2. .env
+GPG_IMPORT_FILE=/home/appuser/gpg-key.asc
+GPG_TRUST_IMPORTED=1        # optional: ultimate ownertrust for the key
+```
+
+```yaml
+# 3. docker-compose.yml
+services:
+  thoth:
+    volumes:
+      - gnupg-data:/home/appuser/.gnupg                 # default: persisted keyring
+      - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
+```
+
+```bash
+# 4. start and verify
+make up
+docker compose logs thoth | grep gpg
+#   gpg: imported keys from /home/appuser/gpg-key.asc
+#   gpg: git signing configured (user.signingkey=..., commit.gpgsign=true)
+docker compose exec thoth gpg -k
+```
+
+What the entrypoint configures automatically after the import:
+
+- **git commit signing**: when exactly one secret key is present,
+  `user.signingkey` is set to its fingerprint and `commit.gpgsign` /
+  `tag.gpgsign` are enabled - every `git commit` and `git tag` inside the
+  container is signed. With multiple keys nothing is guessed; set
+  `git config --global user.signingkey <fpr>` yourself.
+- The git identity (`user.email`/`user.name`) stays the image default
+  (`agent@example.com` / `agent`) - override it to match the key's uid:
+  ```bash
+  docker compose exec thoth git config --global user.email "you@example.com"
+  docker compose exec thoth git config --global user.name "Your Name"
+  ```
+  or set it in `.gitconfig` and mount it over `/home/appuser/.gitconfig`.
+
+Note on `pass`: the password store lives on the **host** - this design
+uses it only from there (see
+[Keeping the API key out of .env](#keeping-the-api-key-out-of-env-pass--compose-secrets),
+where `make up` reads the LLM key from the host's pass store). `pass` is
+not installed inside the container; if you need secrets from the host
+store during a session, mount the store read-only
+(`- ${HOME}/.password-store:/home/appuser/.password-store:ro`) and read
+the entries with `gpg -d`, or pass values in as environment variables.
+
 ## Repository notes
 
 - [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt): documentation
