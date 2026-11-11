@@ -17,6 +17,8 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     pipx \
     ripgrep \
     fzf \
+    gnupg-utils \
+    pinentry-curses \
     && rm -rf /var/lib/apt/lists/*
 
 # Ubuntu 26.04 ships an embedded /usr/bin/pebble binary in the base image.
@@ -70,7 +72,12 @@ RUN if getent group appuser >/dev/null 2>&1; then true; \
     else groupadd -g "$APP_GID" appuser; fi \
     && useradd -m -u "$APP_UID" -g "$APP_GID" -s /bin/bash appuser
 
-RUN mkdir -p /home/appuser/.local/share/opencode/skills /home/appuser/.local/share/opencode/repos /home/appuser/.ssh /home/appuser/.config/goosetown
+# ~/.gnupg must exist in the image so the gnupg-data compose volume
+# inherits appuser ownership on first use (fresh named volumes are
+# root-owned otherwise; docker seeds volume ownership from image content)
+RUN mkdir -p /home/appuser/.local/share/opencode/skills /home/appuser/.local/share/opencode/repos /home/appuser/.ssh /home/appuser/.config/goosetown /home/appuser/.gnupg \
+    && chmod 700 /home/appuser/.gnupg \
+    && chown -R appuser:appuser /home/appuser/.gnupg
 RUN ssh-keyscan github.com >> /home/appuser/.ssh/known_hosts
 COPY --chown=appuser:appuser skills/ /home/appuser/.config/opencode/skills/
 COPY --chown=appuser:appuser scripts/ /app/scripts/
@@ -83,7 +90,7 @@ COPY --chown=appuser:appuser goosetown/goose_gui /usr/local/bin/goose_gui
 COPY --chown=appuser:appuser goosetown/gtwall /usr/local/bin/gtwall
 COPY --chown=appuser:appuser goosetown/dashboard /usr/local/bin/goosetown-dashboard
 
-RUN chown -R appuser:appuser /home/appuser/.local /home/appuser/.ssh /home/appuser/.config /app/goosetown /app/scripts \
+RUN chown -R appuser:appuser /home/appuser/.local /home/appuser/.ssh /home/appuser/.config /home/appuser/.gnupg /app/goosetown /app/scripts \
     && mkdir -p /home/appuser/.config/goose \
     && chown -R appuser:appuser /home/appuser/.config/goose
 
@@ -179,6 +186,12 @@ RUN printf '%s\n' \
     'if [ -n "$PS1" ] && [ -f "$HOME/.config/thoth-banner.txt" ]; then' \
     '    cat "$HOME/.config/thoth-banner.txt"' \
     'fi' >> /home/appuser/.bashrc
+
+# GPG pinentry needs to know the terminal of the interactive shell;
+# without GPG_TTY, pinentry-curses fails with "No TTY available" even
+# in a docker compose exec bash session
+RUN printf '%s\n' \
+    'export GPG_TTY=$(tty 2>/dev/null || true)' >> /home/appuser/.bashrc
 
 EXPOSE 9464
 USER appuser
