@@ -9,6 +9,10 @@ name: Ready for test
 # original pull_request event context, so the gate in build.yml stays in
 # charge. A dispatch would bypass the gate entirely.
 #
+# The gate condition is evaluated at STEP level, not job level: a comment
+# that does NOT match (non-owner, or different text) still runs the job
+# and prints an explanation, instead of showing an opaque "skipped" job.
+#
 # NOTE: this workflow must live on the default branch - GitHub only runs
 # issue_comment workflows from the default branch's version of the file.
 
@@ -23,32 +27,59 @@ permissions:
 jobs:
   ready-for-test:
     name: Re-run gated build
-    if: >-
-      github.event.issue.pull_request &&
-      github.event.comment.user.login == github.repository_owner &&
-      github.event.comment.body == 'ready for test'
+    # gate condition (owner + exact text + on a PR), as a step-level
+    # expression reused below - kept in sync manually
     runs-on: ubuntu-latest
     permissions:
       actions: write
     steps:
-      - name: Rerun the PR's Build workflow
+      - name: Explain why no build was triggered (informational)
+        if: >-
+          !(github.event.issue.pull_request &&
+             github.event.comment.user.login == github.repository_owner &&
+             github.event.comment.body == 'ready for test')
+        run: |
+          echo "This comment did not trigger a build rerun:"
+          if [ "${{ github.event.issue.pull_request }}" != "true" ]; then
+            echo "  - it is not on a pull request"
+          elif [ "${{ github.event.comment.user.login }}" != "${{ github.repository_owner }}" ]; then
+            echo "  - '${{ github.event.comment.user.login }}' is not the repo owner ('${{ github.repository_owner }}')"
+          else
+            echo "  - the comment text is not exactly 'ready for test'"
+          fi
+          echo "Builds rerun only when the repository owner comments 'ready for test' on a PR."
+
+      - name: Rerun the PR's gated workflows (Build and Test)
+        if: >-
+          github.event.issue.pull_request &&
+          github.event.comment.user.login == github.repository_owner &&
+          github.event.comment.body == 'ready for test'
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          # GH_REPO makes every gh command target this repository
+          # without git-based auto-detection - this workflow has no
+          # checkout step (it needs no code), so `gh run list` would
+          # otherwise fail with "not a git repository".
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.issue.number }}
         run: |
           set -euo pipefail
-          # Find the PR's head branch, locate its latest Build run, and
-          # rerun it. The rerun carries the original pull_request event,
-          # so build.yml's gate re-checks the comments and opens.
+          # Find the PR's head branch, locate the latest Build AND Test
+          # runs, and rerun both. The reruns carry the original
+          # pull_request event, so each workflow's gate re-checks the
+          # comments and opens. (--workflow takes the FILE name,
+          # case-sensitive: build.yml, test.yml.)
           pr="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")"
           head_ref="$(jq -r '.head.ref' <<<"$pr")"
-          run_id="$(gh run list --workflow Build.yml \
-            --branch "$head_ref" --event pull_request --limit 1 \
-            --json databaseId --jq '.[0].databaseId')"
-          if [ -n "$run_id" ] && [ "$run_id" != "null" ]; then
-            gh run rerun "$run_id"
-            echo "Rerunning Build run ${run_id} for PR #${PR_NUMBER} (branch ${head_ref}); the gate now finds the owner's 'ready for test' comment."
-          else
-            echo "No Build run found for PR #${PR_NUMBER} on ${head_ref} - push to the PR or open it first, then comment 'ready for test'."
-          fi
+          for wf in build.yml test.yml; do
+            run_id="$(gh run list --workflow "$wf" \
+              --branch "$head_ref" --event pull_request --limit 1 \
+              --json databaseId --jq '.[0].databaseId')"
+            if [ -n "$run_id" ] && [ "$run_id" != "null" ]; then
+              gh run rerun "$run_id"
+              echo "Rerunning ${wf} run ${run_id} for PR #${PR_NUMBER} (branch ${head_ref}); the gate now finds the owner's 'ready for test' comment."
+            else
+              echo "No ${wf} run found for PR #${PR_NUMBER} on ${head_ref} - push to the PR or open it first, then comment 'ready for test'."
+            fi
+          done

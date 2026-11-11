@@ -1,9 +1,8 @@
 name: Test
 
 # Unit tests for the entrypoint and sync scripts (bats) plus shellcheck
-# linting. Runs on every push and pull_request - independent of the
-# image build gate (test failures block the PR regardless of the
-# ready-for-test approval).
+# linting. On pull requests, gated behind the owner's "ready for test"
+# comment (same gate as the image build); pushes to main always run.
 
 on:
   push:
@@ -15,8 +14,38 @@ permissions:
   contents: read
 
 jobs:
+  test-gate:
+    name: Test gate (ready for test)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      approved: ${{ steps.gate.outputs.approved }}
+    steps:
+      - name: Check out repository
+        # local composite actions (uses: ./...) need the repo checked out
+        # before they can be referenced
+        uses: actions/checkout@v4
+      - name: Ready for test gate
+        id: gate
+        uses: ./.github/actions/ready-for-test-gate
+        with:
+          pr-number: ${{ github.event.pull_request.number }}
+          repo: ${{ github.repository }}
+          token: ${{ github.token }}
+
   unit:
     name: Unit tests (bats + shellcheck)
+    needs: test-gate
+    # test-gate is skipped on non-PR events, so its result is 'skipped'
+    # there - always() + the explicit condition keeps main-branch tests
+    # running while PR tests require the gate to have passed.
+    if: >-
+      always() &&
+      (github.event_name != 'pull_request' ||
+       needs.test-gate.outputs.approved == 'true')
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
