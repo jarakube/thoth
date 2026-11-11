@@ -586,7 +586,9 @@ the entries with `gpg -d`, or pass values in as environment variables.
   trailer matching the commit author. CI rejects unsigned commits.
 - PR jobs are gated: both the Test (unit tests) and Build (image)
   workflows run on a PR only after the repository owner comments
-  `ready for test` on it. Pushes to `main` always run.
+  `ready for test` on it. The approval is per-commit state: pushing new
+  commits to the PR invalidates it, and the owner must comment
+  `ready for test` again. Pushes to `main` always run.
 - Add new skills under `skills/<name>/SKILL.md`; they will be copied into the
   image on build. See [skills/README.md](skills/README.md).
 - The goosetown directory is a git submodule: clone with
