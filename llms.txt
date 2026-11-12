@@ -18,7 +18,7 @@ API keys can come from `pass` via docker compose secrets.
 - [Integrating other agents](https://github.com/jarakube/thoth/blob/main/docs/agents.md): Claude Code, Codex CLI, Gemini CLI - install commands, skills locations, AGENTS.md support matrix, MCP config formats, derived-image recipes
 - [LiteLLM configuration](https://github.com/jarakube/thoth/blob/main/LITELLM_CONFIGURATION.md): single-source LLM config for both agents (LLM_* env), pass/compose-secret key handling, OpenCode openai-compatible provider wiring
 - [Goosetown integration](https://github.com/jarakube/thoth/blob/main/GOOSETOWN_INTEGRATION.md): what the image sets up for goose/goosetown (paths, wrappers, telepathy)
-- [Suricata network monitoring](https://github.com/jarakube/thoth/blob/main/docs/suricata-docker-compose-integration.md): opt-in IDS sidecar - passive capture of agent traffic (EVE JSON: flow, dns, tls, http, alert, stats), make suricata-init/up/down/report targets, traffic overview script, caveats
+- [Suricata network monitoring](https://github.com/jarakube/thoth/blob/main/docs/suricata-docker-compose-integration.md): opt-in IDS sidecar - passive capture of agent traffic (EVE JSON: flow, dns, tls, http, alert, stats), make suricata-init/up/down/report targets, traffic overview script, egress blocking (block IP/domain via iptables in the shared namespace), caveats
 
 ## Examples
 

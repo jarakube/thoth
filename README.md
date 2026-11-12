@@ -622,6 +622,52 @@ Caveats worth knowing (full reference:
 - Log retention: `eve.json` grows indefinitely; rotate or ship to a
   SIEM before long-running deployments.
 
+## Blocking outgoing traffic (egress blocks)
+
+The Suricata sidecar only *observes* (passive IDS). To actually prevent
+the agents from connecting somewhere, use the egress blocker: it applies
+iptables rules in thoth's network namespace (the same NET_ADMIN grant
+the suricata sidecar uses).
+
+```bash
+# block a single IP address
+make block-egress ARGS="add 93.184.216.34"
+
+# block a DOMAIN - resolved at apply time, ALL its IPv4 + IPv6
+# addresses are blocked
+make block-egress ARGS="add tracking.example.com"
+
+make block-egress ARGS="list"                 # show active blocks
+make block-egress ARGS="remove 93.184.216.34" # remove one
+make block-egress ARGS="clear"               # remove all
+```
+
+Persistent blocklist: put one IP or domain per line into
+`suricata/blocklist` and apply it with `make block-egress ARGS=refresh`
+- re-run it after DNS changes to pick up new addresses for listed
+domains.
+
+How it works: a short-lived helper container runs with `NET_ADMIN` in
+thoth's network namespace, adds `OUTPUT ... DROP` rules marked
+`thoth-block` (iptables for IPv4, ip6tables for IPv6), and exits. The
+rules live in the namespace: they persist until the thoth container is
+recreated, and `clear`/`remove` filter strictly on the `thoth-block`
+marker so nothing else on the system is touched.
+
+Caveats:
+
+- **Domain blocks are a snapshot**: DNS changes are not tracked - re-run
+  `refresh` to re-resolve. A domain moved to a new address stays
+  reachable until then.
+- **DNS itself is not blocked**: the resolver (Docker's embedded
+  `127.0.0.11`) still answers queries for blocked domains; only the
+  connections are dropped.
+- Rules are per-container-namespace: recreating thoth (e.g.
+  `docker compose down && up`) starts with a clean namespace - re-apply
+  the blocklist afterwards.
+- Blocking is a security control, not a substitute for the monitoring:
+  combine with `make suricata-report` to verify what remains reachable.
+
 ## Repository notes
 
 - [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt): documentation
