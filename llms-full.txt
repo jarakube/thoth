@@ -593,7 +593,12 @@ make suricata-init    # validate the versioned sensor config
 make suricata-up      # start thoth + the suricata sidecar
 make suricata-down    # stop both (logs persist in suricata/logs/)
 
-# inspect what the agents have been talking to
+# overview report: hosts (TLS SNI when observed), egress/ingress
+# volumes, flow counts, sensor health, recent connections
+make suricata-report          # or: ./scripts/suricata-report.sh
+./scripts/suricata-report.sh --live   # refreshing watch mode
+
+# raw jq queries
 jq -r 'select(.event_type == "tls") | .tls.sni // empty' suricata/logs/eve.json | sort -u
 jq -r 'select(.event_type == "flow") | [.src_ip, .dest_ip, .dest_port] | @tsv' suricata/logs/eve.json | tail -20
 ```
