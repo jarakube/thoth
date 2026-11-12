@@ -6,3 +6,13 @@ workspace/*
 !workspace/.gitkeep
 *.swp
 *.swo
+
+# suricata sidecar: only the reviewed suricata.yaml is versioned;
+# the image's entrypoint re-creates the auxiliary config files
+# (classification/reference/threshold/update) at runtime
+suricata/logs/*
+!suricata/logs/.gitkeep
+suricata/data/*
+!suricata/data/.gitkeep
+suricata/config/*
+!suricata/config/suricata.yaml

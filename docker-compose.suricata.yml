@@ -1,0 +1,40 @@
+# Suricata IDS sidecar for the thoth agent container - OPT-IN.
+#
+# Usage (see README "Network monitoring (Suricata)"):
+#   make suricata-init     # one-time: seed suricata/config/
+#   make suricata-up       # start thoth + the suricata sidecar
+#   make suricata-down     # stop both (logs/data persist)
+#
+# Or manually:
+#   docker compose -f docker-compose.yml -f docker-compose.suricata.yml up -d
+#
+# The sidecar shares thoth's network namespace (network_mode: service:thoth)
+# and passively captures on eth0, writing EVE JSON events (flow, dns, tls,
+# http, alert, stats) to ./suricata/logs/eve.json. Passive IDS: it observes
+# traffic; it does not block. See docs/suricata-docker-compose-integration.md
+# for the full reference, caveats (DNS-on-loopback blind spot, depends_on
+# is not sensor readiness), and troubleshooting.
+
+services:
+  suricata:
+    image: jasonish/suricata:8.0
+    # share thoth's network namespace - capture what the agent sends/receives
+    network_mode: "service:thoth"
+    depends_on:
+      - thoth
+    # documented capabilities for packet capture; no privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    environment:
+      # remap the in-container suricata user to the host user so the
+      # bind mounts (config/logs/data) are owned by you, not root:998
+      PUID: ${HOST_UID:-1000}
+      PGID: ${HOST_GID:-1000}
+    command: ["-i", "eth0"]
+    volumes:
+      - ./suricata/config:/etc/suricata
+      - ./suricata/logs:/var/log/suricata
+      - ./suricata/data:/var/lib/suricata
+    restart: unless-stopped

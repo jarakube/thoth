@@ -609,6 +609,97 @@ bd prime            # workflow context for agents
 To seed issues from a git repo or sync across machines, see
 `bd dolt push/pull` in the
 [beads docs](https://beads.gascity.com/).
+### Network monitoring (Suricata, opt-in)
+
+A Suricata IDS sidecar can passively monitor the agent's network traffic
+- every LLM API call, DNS lookup, and egress connection the agents make
+- without touching the application or routing traffic through a proxy.
+It shares thoth's network namespace and writes structured EVE JSON
+events (flow, dns, tls, http, alert, stats) to `suricata/logs/eve.json`.
+
+```bash
+make suricata-init    # validate the versioned sensor config
+make suricata-up      # start thoth + the suricata sidecar
+make suricata-down    # stop both (logs persist in suricata/logs/)
+
+# overview report: hosts (TLS SNI when observed), egress/ingress
+# volumes, flow counts, sensor health, recent connections
+make suricata-report          # or: ./scripts/suricata-report.sh
+./scripts/suricata-report.sh --live   # refreshing watch mode
+
+# raw jq queries
+jq -r 'select(.event_type == "tls") | .tls.sni // empty' suricata/logs/eve.json | sort -u
+jq -r 'select(.event_type == "flow") | [.src_ip, .dest_ip, .dest_port] | @tsv' suricata/logs/eve.json | tail -20
+```
+
+The sensor configuration (`suricata/config/suricata.yaml`) is
+version-controlled and reviewed - no generated state. Detection rules
+are OFF by default (`rule-files: []`): without signatures you get
+flow/dns/tls/http/stats events but no alerts; enable rules with
+`suricata-update` inside the running sidecar and add them to
+`rule-files` (see the
+[suricata-update docs](https://docs.suricata.io/en/latest/rule-management/suricata-update.html)).
+
+Caveats worth knowing (full reference:
+[docs/suricata-docker-compose-integration.md](docs/suricata-docker-compose-integration.md)):
+
+- **Passive IDS, not a firewall** - it observes; it never blocks.
+- **DNS blind spot**: Docker's embedded resolver answers on loopback
+  (`127.0.0.11`), which `eth0` capture does not see - many DNS queries
+  will be invisible.
+- **`depends_on` is not sensor readiness** - traffic from thoth's
+  startup may be missed; restart the sidecar for a clean capture window.
+- The sidecar adds `NET_ADMIN`/`NET_RAW`/`SYS_NICE` capabilities - a
+  real privilege grant, which is why it is opt-in and never part of
+  plain `make up`.
+- Log retention: `eve.json` grows indefinitely; rotate or ship to a
+  SIEM before long-running deployments.
+
+### Blocking outgoing traffic (egress blocks)
+
+The Suricata sidecar only *observes* (passive IDS). To actually prevent
+the agents from connecting somewhere, use the egress blocker: it applies
+iptables rules in thoth's network namespace (the same NET_ADMIN grant
+the suricata sidecar uses).
+
+```bash
+# block a single IP address
+make block-egress ARGS="add 93.184.216.34"
+
+# block a DOMAIN - resolved at apply time, ALL its IPv4 + IPv6
+# addresses are blocked
+make block-egress ARGS="add tracking.example.com"
+
+make block-egress ARGS="list"                 # show active blocks
+make block-egress ARGS="remove 93.184.216.34" # remove one
+make block-egress ARGS="clear"               # remove all
+```
+
+Persistent blocklist: put one IP or domain per line into
+`suricata/blocklist` and apply it with `make block-egress ARGS=refresh`
+- re-run it after DNS changes to pick up new addresses for listed
+domains.
+
+How it works: a short-lived helper container runs with `NET_ADMIN` in
+thoth's network namespace, adds `OUTPUT ... DROP` rules marked
+`thoth-block` (iptables for IPv4, ip6tables for IPv6), and exits. The
+rules live in the namespace: they persist until the thoth container is
+recreated, and `clear`/`remove` filter strictly on the `thoth-block`
+marker so nothing else on the system is touched.
+
+Caveats:
+
+- **Domain blocks are a snapshot**: DNS changes are not tracked - re-run
+  `refresh` to re-resolve. A domain moved to a new address stays
+  reachable until then.
+- **DNS itself is not blocked**: the resolver (Docker's embedded
+  `127.0.0.11`) still answers queries for blocked domains; only the
+  connections are dropped.
+- Rules are per-container-namespace: recreating thoth (e.g.
+  `docker compose down && up`) starts with a clean namespace - re-apply
+  the blocklist afterwards.
+- Blocking is a security control, not a substitute for the monitoring:
+  combine with `make suricata-report` to verify what remains reachable.
 
 ### Repository notes
 
