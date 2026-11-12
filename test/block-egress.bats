@@ -19,7 +19,18 @@ setup_file() {
   docker run -d --name thoth-blocktest-helper \
     --network thoth-blocktest-net --ip 10.99.99.99 \
     python:3-alpine python3 -m http.server 80 --bind 0.0.0.0 >/dev/null
-  sleep 2
+  # wait for the helper to answer instead of a fixed sleep: on a cold
+  # CI runner the image pull + server start can exceed any fixed value
+  for _ in $(seq 1 60); do
+    if docker run --rm --network thoth-blocktest-net alpine:3.20 \
+        sh -c 'apk add -q curl >/dev/null 2>&1; \
+               curl -s -o /dev/null -m 2 http://10.99.99.99/' 2>/dev/null; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ERROR: blocktest helper did not become reachable" >&2
+  return 1
 }
 
 teardown_file() {
