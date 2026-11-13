@@ -1,0 +1,153 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "thoth.fullname" . }}
+  labels:
+    {{- include "thoth.labels" . | nindent 4 }}
+spec:
+  # ONE thoth per namespace: the state PVCs are ReadWriteOnce and the
+  # agent is not designed for concurrent instances on shared state.
+  replicas: 1
+  serviceName: {{ include "thoth.fullname" . }}
+  selector:
+    matchLabels:
+      {{- include "thoth.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "thoth.selectorLabels" . | nindent 8 }}
+        {{- if .Values.monitoring.serviceMonitor.enabled }}
+        {{- range $k, $v := .Values.monitoring.serviceMonitor.podLabels | default dict }}
+        {{ $k }}: {{ $v | quote }}
+        {{- end }}
+        {{- end }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
+    spec:
+      {{- if and .Values.imagePullSecret.enabled (or .Values.imagePullSecret.existingSecret .Values.imagePullSecret.username) }}
+      imagePullSecrets:
+        - name: {{ include "thoth.pullSecretName" . }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: thoth
+          image: {{ include "thoth.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          # args (= CMD) override, NOT command: the image ENTRYPOINT
+          # (container-entrypoint.sh) must run - it sets up the LLM key,
+          # gpg, beads, and starts the metrics exporter the probes use.
+          # 'command' would replace the entrypoint entirely.
+          args: ["bash", "-c", "sleep infinity"]
+          workingDir: /workspace
+          envFrom:
+            - configMapRef:
+                name: {{ include "thoth.fullname" . }}-env
+          env:
+            {{- if .Values.llm.endpoint }}
+            - name: LLM_ENDPOINT
+              value: {{ .Values.llm.endpoint | quote }}
+            {{- end }}
+            - name: LLM_MODELS
+              value: {{ .Values.llm.models | quote }}
+            {{- if .Values.llm.defaultModel }}
+            - name: LLM_DEFAULT_MODEL
+              value: {{ .Values.llm.defaultModel | quote }}
+            {{- end }}
+            {{- if or .Values.llm.existingSecret .Values.llm.apiKey }}
+            - name: LLM_API_KEY_FILE
+              value: /run/secrets/llm_api_key
+            {{- end }}
+            {{- if .Values.gpg.importKey }}
+            - name: GPG_IMPORT_FILE
+              value: /home/appuser/gpg-key.asc
+            {{- if .Values.gpg.trustImported }}
+            - name: GPG_TRUST_IMPORTED
+              value: "1"
+            {{- end }}
+            {{- end }}
+            {{- range .Values.extraEnv }}
+            - {{ toYaml . | nindent 12 | trim }}
+            {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.config.OPENCODE_METRICS_PORT | int }}
+              protocol: TCP
+          {{- if eq .Values.config.OPENCODE_METRICS_ENABLED "1" }}
+          livenessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 20
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /metrics
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          {{- end }}
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: opencode-data
+              mountPath: /home/appuser/.local/share/opencode
+            - name: gnupg-data
+              mountPath: /home/appuser/.gnupg
+            - name: beads-data
+              mountPath: /data/beads
+            - name: metrics-data
+              mountPath: /app/share/opencode-runs
+            {{- if or .Values.llm.existingSecret .Values.llm.apiKey }}
+            - name: llm-key
+              # subPath file mount: mounting the whole secret at
+              # /run/secrets would shadow kubernetes.io projected
+              # serviceaccount tokens (kubelet needs that dir) -
+              # the entrypoint reads exactly this file path
+              mountPath: /run/secrets/llm_api_key
+              subPath: llm_api_key
+              readOnly: true
+            {{- end }}
+            {{- if .Values.gpg.importKey }}
+            - name: gpg-key
+              mountPath: /home/appuser/gpg-key.asc
+              subPath: gpg-key.asc
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        {{- if .Values.workspace.persistence.enabled }}
+        - name: workspace
+          persistentVolumeClaim:
+            claimName: {{ include "thoth.fullname" . }}-workspace
+        {{- else }}
+        - name: workspace
+          emptyDir: {}
+        {{- end }}
+        - name: opencode-data
+          persistentVolumeClaim:
+            claimName: {{ include "thoth.fullname" . }}-opencode
+        - name: gnupg-data
+          persistentVolumeClaim:
+            claimName: {{ include "thoth.fullname" . }}-gnupg
+        - name: beads-data
+          persistentVolumeClaim:
+            claimName: {{ include "thoth.fullname" . }}-beads
+        - name: metrics-data
+          persistentVolumeClaim:
+            claimName: {{ include "thoth.fullname" . }}-metrics
+        {{- if or .Values.llm.existingSecret .Values.llm.apiKey }}
+        - name: llm-key
+          secret:
+            secretName: {{ include "thoth.llmSecretName" . }}
+            defaultMode: 0400
+        {{- end }}
+        {{- if .Values.gpg.importKey }}
+        - name: gpg-key
+          secret:
+            secretName: {{ include "thoth.gpgSecretName" . }}
+            defaultMode: 0400
+        {{- end }}

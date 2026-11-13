@@ -27,6 +27,7 @@ API keys can come from `pass` via docker compose secrets.
 - [.env.example](https://github.com/jarakube/thoth/blob/main/.env.example): all configuration variables, commented
 - [docker build (CI)](https://github.com/jarakube/thoth/blob/main/.github/workflows/build.yml): ghcr.io publish, owner-gated PR builds, Trivy digest scan
 - [release pipeline](https://github.com/jarakube/thoth/blob/main/.github/workflows/release.yml): push a semver tag (v*) -> tagged image (vX.Y.Z / X.Y / X / latest), Trivy-scan, GitHub Release with digest and changelog
+- [Helm chart](https://github.com/jarakube/thoth/blob/main/charts/thoth/README.md): deploy thoth to Kubernetes - single-replica StatefulSet, PVC-backed state (workspace/opencode/gnupg/beads), LLM key Secret, metrics probes + optional ServiceMonitor, pull-secret from values, Flux-compatible
 
 ## Optional
 

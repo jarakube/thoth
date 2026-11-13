@@ -65,3 +65,9 @@ jobs:
 
       - name: Unit tests
         run: ./test/run-tests.sh
+
+      - name: Helm chart lint
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash >/dev/null
+          helm lint charts/thoth/
+          helm template charts/thoth/ > /dev/null

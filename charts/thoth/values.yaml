@@ -1,0 +1,112 @@
+# Default values for the thoth chart.
+# One thoth per namespace: the chart creates a single-replica StatefulSet.
+
+image:
+  repository: pdr-harbor.jarakube.com/jarakube-jaraco/thoth
+  # Chart.appVersion is used when empty
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+# Registry credentials: when set, the chart CREATES an image pull
+# secret and attaches it to the pod. Leave empty for public registries.
+imagePullSecret:
+  enabled: true
+  registry: pdr-harbor.jarakube.com
+  username: ""
+  password: ""
+  # alternatively reference an existing secret:
+  existingSecret: ""
+
+# The agent's working directory: goosetown is cloned into it, skills and
+# repos live here. Persistence keeps it across pod restarts.
+workspace:
+  persistence:
+    enabled: true
+    size: 10Gi
+    storageClass: ""   # cluster default when empty
+    accessModes:
+      - ReadWriteOnce
+
+# State PVCs with independent lifecycles:
+#   opencode: auth.json + sessions (~/.local/share/opencode)
+#   gnupg:    keyring (~/.gnupg)
+#   beads:    issue database (/data/beads)
+state:
+  opencode:
+    size: 2Gi
+    storageClass: ""
+  gnupg:
+    size: 1Gi
+    storageClass: ""
+  beads:
+    size: 1Gi
+    storageClass: ""
+
+# Per-run metrics artifacts (read by the exporter on :9464)
+metricsData:
+  size: 1Gi
+  storageClass: ""
+
+# LLM configuration (single source of truth; the entrypoint sync script
+# feeds both agents). apiKey is mounted as a file at
+# /run/secrets/llm_api_key - the same path the compose secret uses.
+llm:
+  # Use an existing secret (must contain the key 'llm-api-key') or set
+  # apiKey inline to have the chart create the secret.
+  existingSecret: ""
+  apiKey: ""
+  endpoint: ""
+  models: "mistral-small-latest mistral-large-latest"
+  defaultModel: ""
+
+# GPG: optional armored secret-key export, imported at startup into the
+# gnupg PVC (see README "Use your GPG keys", option B).
+gpg:
+  existingSecret: ""
+  importKey: ""
+  trustImported: false
+
+# Non-secret agent configuration (rendered into a ConfigMap -> env)
+config:
+  GOOSE_LLM_PROVIDER: "mistral"
+  GOOSE_LLM_MODEL: "mistral-small-latest"
+  OPENCODE_METRICS_ENABLED: "1"
+  OPENCODE_METRICS_PORT: "9464"
+  BEADS_DIR: ""             # empty -> entrypoint resolves (volume default)
+
+# Extra env passthrough (name/value pairs appended after config)
+extraEnv: []
+  # - name: OPENAI_API_KEY
+  #   valueFrom:
+  #     secretKeyRef: {name: my-secret, key: key}
+
+# The image runs as appuser (uid/gid 1000 by default). fsGroup makes
+# the PVCs writable by that user.
+podSecurityContext:
+  fsGroup: 1000
+securityContext:
+  runAsUser: 1000
+  runAsGroup: 1000
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "2"
+    memory: 2Gi
+
+service:
+  type: ClusterIP
+  port: 9464
+
+monitoring:
+  # Requires the Prometheus Operator CRDs; disabled by default.
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+
+# Flux compatibility: no helm hooks are used; labels are plain
+# (no Helm-only annotations Flux cannot handle).
+flux:
+  enabled: false   # true -> adds flux.io annotations for tracking
