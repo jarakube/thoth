@@ -747,8 +747,18 @@ the Secrets), `existingSecret` references, or **vault** via the
 External Secrets Operator (`vault.enabled=true` - the chart creates
 ExternalSecrets against the cluster's `vault-backend` store, including
 the registry pull secret as a templated dockerconfigjson).
-See [charts/thoth/README.md](charts/thoth/README.md) for the full
-values reference.
+
+```bash
+# verify after install
+kubectl get pod -n thoth          # thoth-0  1/1 Running
+helm test thoth -n thoth          # /metrics answers
+kubectl exec -it thoth-0 -n thoth -- bash   # agent shell
+```
+
+The chart README has a complete vault-backed production example
+(storage classes, all secret sources, monitoring), post-install
+verification, a Flux HelmRelease snippet, and the full values
+reference: [charts/thoth/README.md](charts/thoth/README.md).
 
 ### Repository notes
 
