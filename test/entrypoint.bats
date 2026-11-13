@@ -118,6 +118,8 @@ import time; time.sleep(30)
     fi
   fi
   [ "$resolved" = "/data/beads/.beads" ]
+}
+
 # --- suricata sidecar (compose + config wiring) -----------------------------
 
 @test "suricata: override compose file is valid and shares thoth's namespace" {

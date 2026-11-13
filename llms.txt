@@ -13,7 +13,7 @@ API keys can come from `pass` via docker compose secrets.
 
 - [README](https://github.com/jarakube/thoth/blob/main/README.md): project overview, build/run (docker compose + Makefile), metrics endpoint, skills, goose/goosetown, MCP, CI, Keycloak notes
 - [AGENTS.md](https://github.com/jarakube/thoth/blob/main/AGENTS.md): guidance for AI coding agents working on this repository (build/verify commands, conventions, DCO)
-- [Skills](https://github.com/jarakube/thoth/blob/main/skills/README.md): the skill system - SKILL.md format, mapping skills into the container at runtime (bind mount, volume, ConfigMap, derived image), keeping private skills out
+- [Skills](https://github.com/jarakube/thoth/blob/main/skills/README.md): the skill system - SKILL.md format, mapping skills into the container at runtime (bind mount, volume, ConfigMap, derived image), keeping private skills out; ships ceph (Ceph expert) and thoth (repo development incl. the in-container no-docker constraint)
 - [MCP servers](https://github.com/jarakube/thoth/blob/main/docs/mcp.md): remote MCP servers for both agents; the jarakube.eu/mcp example; adding your own servers
 - [Integrating other agents](https://github.com/jarakube/thoth/blob/main/docs/agents.md): Claude Code, Codex CLI, Gemini CLI - install commands, skills locations, AGENTS.md support matrix, MCP config formats, derived-image recipes
 - [LiteLLM configuration](https://github.com/jarakube/thoth/blob/main/LITELLM_CONFIGURATION.md): single-source LLM config for both agents (LLM_* env), pass/compose-secret key handling, OpenCode openai-compatible provider wiring

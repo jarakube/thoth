@@ -16,7 +16,7 @@ This repository builds a CLI agent image that combines:
 - [OpenCode](https://opencode.ai) (`opencode-ai`) for interactive coding/ops workflows
 - [Goose](https://github.com/aaif-goose/goose) + [Goosetown](https://github.com/aaif-goose/goosetown) for multi-agent orchestration
 - `kubectl` for Kubernetes cluster access
-- A small, generic skill pack (currently a Ceph expert skill)
+- A small, generic skill pack (a Ceph expert skill and a thoth developer skill)
 
 The result is a ready-to-run agent container for infrastructure-heavy tasks
 where Kubernetes and storage knowledge are needed in the same environment.

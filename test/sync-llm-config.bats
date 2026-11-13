@@ -8,6 +8,10 @@ setup() {
   TEST_DIR="$(mktemp -d)"
   export HOME="$TEST_DIR/home"
   mkdir -p "$HOME"
+  # hermetic: the running thoth container exports LLM_* env vars
+  # (compose wiring) that would leak into the tests and change the
+  # defaults under assertion
+  unset LLM_ENDPOINT LLM_API_KEY_ENV LLM_MODELS LLM_DEFAULT_MODEL || true
   SYNC="$BATS_TEST_DIRNAME/../scripts/sync-llm-config.sh"
 }
 
