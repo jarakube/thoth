@@ -23,7 +23,10 @@ suricata-init:
 # Start thoth + the suricata sidecar (shares thoth's network namespace,
 # passively captures on eth0, writes suricata/logs/eve.json)
 suricata-up:
-	HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) \
+	@set -e; \
+	$(load-llm-key); \
+	trap 'test -n "$$keyfile" && rm -f "$$keyfile"' EXIT; \
+	LLM_API_KEY_FILE="$$keyfile" HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) \
 	  docker compose -f docker-compose.yml -f docker-compose.suricata.yml up -d
 
 # Overview report of the captured traffic: hosts, egress/ingress
@@ -57,16 +60,22 @@ test:
 # mounted as the llm_api_key compose secret - it never lands in .env,
 # `docker inspect`, or the image. Otherwise the secret stays empty and
 # the key can be set via .env as before.
+# Shared: load the LLM key from pass into a temp file (compose secret).
+# Sets KEYFILE (empty when unavailable); caller must clean it up.
+define load-llm-key
+keyfile=""; \
+if command -v pass >/dev/null 2>&1 && pass show $(PASS_LLM_ENTRY) >/dev/null 2>&1; then \
+  keyfile="/tmp/thoth-llm-key.$$$$"; \
+  pass show $(PASS_LLM_ENTRY) | head -n1 > "$$keyfile"; chmod 600 "$$keyfile"; \
+  echo "make: LLM key loaded from pass entry '$(PASS_LLM_ENTRY)'"; \
+else \
+  echo "make: pass entry '$(PASS_LLM_ENTRY)' not available - starting without key secret"; \
+fi
+endef
+
 up:
 	@set -e; \
-	keyfile=""; \
-	if command -v pass >/dev/null 2>&1 && pass show $(PASS_LLM_ENTRY) >/dev/null 2>&1; then \
-	  keyfile="/tmp/thoth-llm-key.$$$$"; \
-	  pass show $(PASS_LLM_ENTRY) | head -n1 > "$$keyfile"; chmod 600 "$$keyfile"; \
-	  echo "make: LLM key loaded from pass entry '$(PASS_LLM_ENTRY)'"; \
-	else \
-	  echo "make: pass entry '$(PASS_LLM_ENTRY)' not available - starting without key secret"; \
-	fi; \
+	$(load-llm-key); \
 	trap 'test -n "$$keyfile" && rm -f "$$keyfile"' EXIT; \
 	LLM_API_KEY_FILE="$$keyfile" HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) \
 	  docker compose up -d --build
