@@ -130,7 +130,7 @@ services:
       # SSH keys for git/gh over ssh (requires uid match with appuser, 1000):
       - ${HOME}/.ssh:/home/appuser/.ssh:ro
       # Host git config (identity, signing key, aliases):
-      # - ${HOME}/.gitconfig:/home/appuser/.gitconfig:ro
+      - ${HOME}/.gitconfig:/home/appuser/.gitconfig:ro
       # GPG keyring - persists across container restarts (named volume).
       # Reuse host keys (see README "Use your GPG keys"):
       #  a) import an armored key export (recommended): mount the file
@@ -139,7 +139,7 @@ services:
       #  b) mount the whole host keyring instead: comment the gnupg-data
       #     volume line above AND uncomment here (stale daemon sockets and
       #     locks from the host are cleaned at startup):
-      # - ${HOME}/.gnupg:/home/appuser/.gnupg
+      - ${HOME}/.gnupg:/home/appuser/.gnupg
       # key export mount for (a):
       # - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
       - gnupg-data:/home/appuser/.gnupg

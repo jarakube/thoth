@@ -16,6 +16,7 @@ location for the in-container `appuser`.
 | Skill | Purpose |
 |-------|---------|
 | `ceph` | Production-oriented Ceph expert persona: RADOS, RGW, dynamic bucket sharding, Rook on Kubernetes, OpenStack integration |
+| `thoth` | Develop and test the thoth container itself: repo layout, conventions (DCO, docs sync), the in-container no-docker constraint and the in-place verification workflow, CI gates |
 
 The `ceph` skill is intentionally generic: it demonstrates the expected
 `SKILL.md` format (YAML frontmatter with `name` and `description`, followed by
