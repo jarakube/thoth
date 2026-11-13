@@ -1,55 +1,86 @@
-FROM ubuntu:26.04
+# syntax=docker/dockerfile:1
 
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+# ---- Builder stage: install heavy toolchains and npm globals ----
+FROM ubuntu:26.04 AS builder
+
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
     curl \
     bzip2 \
-    python3 \
-    python3-pip \
-    python3-yaml \
+    ca-certificates \
+    gnupg \
     nodejs \
     npm \
-    jq \
-    apt-transport-https ca-certificates gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Option A (default): use the official opencode release from npm.
+# Option B: use a self-built binary - place it at build/opencode/opencode
+# before building (see README "Use a custom opencode build") and comment
+# the npm install line below.
+RUN --mount=type=cache,target=/root/.npm \
+    npm install -g opencode-ai@latest \
+    && npm install -g @beads/bd \
+    && npm cache clean --force
+
+# ---- Runtime stage: slim base, only what the agent needs at runtime ----
+FROM ubuntu:26.04 AS runtime
+
+# Runtime dependencies only (no upgrade, no recommends)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    curl \
+    wget \
+    bzip2 \
+    unzip \
     git \
     gh \
-    wget \
-    unzip \
+    jq \
+    python3 \
+    python3-yaml \
+    python3-pip \
     pipx \
+    nodejs \
+    npm \
     ripgrep \
     fzf \
+    gnupg \
     gnupg-utils \
     pinentry-curses \
+    apt-transport-https \
     && rm -rf /var/lib/apt/lists/*
 
 # Ubuntu 26.04 ships an embedded /usr/bin/pebble binary in the base image.
 # It is unused here and currently trips Trivy on bundled Go CVEs.
 RUN rm -f /usr/bin/pebble
 
-RUN mkdir -p /etc/apt/keyrings \
+# kubectl from pkgs.k8s.io
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.36/deb/Release.key \
-      | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg \
+       | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.36/deb/ /" \
-      > /etc/apt/sources.list.d/kubernetes.list \
+       > /etc/apt/sources.list.d/kubernetes.list \
     && apt-get update \
-    && apt-get install -y kubectl \
+    && apt-get install -y --no-install-recommends kubectl \
     && rm -rf /var/lib/apt/lists/*
 
+# goose binary (pinned via ARG)
 ARG GOOSE_VERSION=v1.50.0
 COPY --chmod=755 scripts/install-goose.sh /usr/local/bin/install-goose.sh
 RUN GOOSE_VERSION=${GOOSE_VERSION} GOOSE_BIN_DIR=/usr/local/bin /usr/local/bin/install-goose.sh \
     && /usr/local/bin/goose --version
 
-# Option A (default): use the official opencode release from npm.
-# Option B: use a self-built binary - place it at build/opencode/opencode
-# before building (see README "Use a custom opencode build") and comment
-# the npm install line below.
-RUN npm install -g opencode-ai@latest
-
-# Beads (bd): graph issue tracker for agents. Initialized at container
-# start into the beads-data volume (or the project's .beads/ if present)
-# - see scripts/container-entrypoint.sh.
-RUN npm install -g @beads/bd
-# COPY --chmod=755 build/opencode/opencode /usr/local/bin/opencode
+# Copy npm global installs from builder (node_modules + bin symlinks)
+COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=builder /usr/local/bin/opencode /usr/local/bin/opencode
+COPY --from=builder /usr/local/bin/bd /usr/local/bin/bd
+# Copy any other bin symlinks npm created (npx, etc.)
+COPY --from=builder /usr/local/bin/ /usr/local/bin/
 
 # Install goosetown
 RUN mkdir -p /app/goosetown
