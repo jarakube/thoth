@@ -580,6 +580,35 @@ store during a session, mount the store read-only
 (`- ${HOME}/.password-store:/home/appuser/.password-store:ro`) and read
 the entries with `gpg -d`, or pass values in as environment variables.
 
+### Beads issue tracker (bd)
+
+The container ships [beads](https://github.com/gastownhall/beads) (`bd`)
+- a graph issue tracker for coding agents (Dolt-backed, dependency-aware).
+`bd` is available in every shell; agents discover the workflow via
+`bd prime`.
+
+Database resolution at container start:
+
+| Condition | BEADS_DIR |
+|---|---|
+| `BEADS_DIR` set in `.env` | respected as-is (explicit override) |
+| project has `workspace/.beads/` | `/workspace/.beads` (project-managed) |
+| otherwise | `/data/beads/.beads` - **created on first start** in the `beads-data` docker volume, persisted across restarts |
+
+The resolved location is exported as `BEADS_DIR` (entrypoint session
+and `.bashrc`), so `bd` needs no git-repo discovery.
+
+```bash
+# verify
+docker compose exec thoth bash
+bd ready            # claimable work
+bd create "Fix the thing" -p 1 -t bug
+bd prime            # workflow context for agents
+```
+
+To seed issues from a git repo or sync across machines, see
+`bd dolt push/pull` in the
+[beads docs](https://beads.gascity.com/).
 ### Network monitoring (Suricata, opt-in)
 
 A Suricata IDS sidecar can passively monitor the agent's network traffic

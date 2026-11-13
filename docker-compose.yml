@@ -96,6 +96,12 @@ services:
       GPG_IMPORT_FILE: ${GPG_IMPORT_FILE:-/dev/null}
       # Optionally trust imported keys ultimately (ownertrust 6):
       # GPG_TRUST_IMPORTED: ${GPG_TRUST_IMPORTED:-0}
+      # Beads (bd) database location. UNSET by default: the entrypoint
+      # resolves it (project .beads under /workspace wins, else the
+      # beads-data volume at /data/beads/.beads) and exports it for the
+      # container session + .bashrc. Set BEADS_DIR here only for an
+      # explicit override.
+      BEADS_DIR: ${BEADS_DIR:-}
       # Goosetown: a working clone is created at /workspace/goosetown on
       # first start. Set here as container env so ALL shells see them (also
       # non-interactive `docker compose exec bash -c`), not just PID 1.
@@ -137,6 +143,9 @@ services:
       # key export mount for (a):
       # - ${HOME}/thoth-gpg-key.asc:/home/appuser/gpg-key.asc:ro
       - gnupg-data:/home/appuser/.gnupg
+      # Beads (bd) default database - created on first start when the
+      # project has no .beads/ of its own; persists across restarts
+      - beads-data:/data/beads
     secrets:
       # Optional: LLM API key as a file (see the top-level secrets: block).
       # When LLM_API_KEY_FILE is unset this mounts an empty file
@@ -154,6 +163,7 @@ services:
 volumes:
   opencode-data:
   gnupg-data:
+  beads-data:
 
 secrets:
   # API key as a file instead of an env var - keeps the key out of
