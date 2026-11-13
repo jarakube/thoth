@@ -737,10 +737,14 @@ helm install thoth ./charts/thoth -n thoth --create-namespace \
   --set llm.endpoint=https://litellm.example.com/v1 --set llm.apiKey=sk-...
 ```
 
-All PVC sizes and storage classes are configurable via values; registry
-pull credentials are created as a Secret from values (or reference an
-existing one). See [charts/thoth/README.md](charts/thoth/README.md) for
-the full values reference.
+All PVC sizes and storage classes are configurable via values. Secrets
+come from three interchangeable sources: inline values (chart creates
+the Secrets), `existingSecret` references, or **vault** via the
+External Secrets Operator (`vault.enabled=true` - the chart creates
+ExternalSecrets against the cluster's `vault-backend` store, including
+the registry pull secret as a templated dockerconfigjson).
+See [charts/thoth/README.md](charts/thoth/README.md) for the full
+values reference.
 
 ## Repository notes
 

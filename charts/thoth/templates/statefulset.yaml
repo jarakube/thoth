@@ -24,7 +24,7 @@ spec:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/configmap-env.yaml") . | sha256sum }}
     spec:
-      {{- if and .Values.imagePullSecret.enabled (or .Values.imagePullSecret.existingSecret .Values.imagePullSecret.username) }}
+      {{- if and .Values.imagePullSecret.enabled (or .Values.imagePullSecret.existingSecret .Values.imagePullSecret.username .Values.vault.enabled) }}
       imagePullSecrets:
         - name: {{ include "thoth.pullSecretName" . }}
       {{- end }}
@@ -56,11 +56,11 @@ spec:
             - name: LLM_DEFAULT_MODEL
               value: {{ .Values.llm.defaultModel | quote }}
             {{- end }}
-            {{- if or .Values.llm.existingSecret .Values.llm.apiKey }}
+            {{- if or .Values.llm.existingSecret .Values.llm.apiKey .Values.vault.enabled }}
             - name: LLM_API_KEY_FILE
               value: /run/secrets/llm_api_key
             {{- end }}
-            {{- if .Values.gpg.importKey }}
+            {{- if or .Values.gpg.importKey .Values.vault.gpg.key }}
             - name: GPG_IMPORT_FILE
               value: /home/appuser/gpg-key.asc
             {{- if .Values.gpg.trustImported }}
@@ -100,7 +100,7 @@ spec:
               mountPath: /data/beads
             - name: metrics-data
               mountPath: /app/share/opencode-runs
-            {{- if or .Values.llm.existingSecret .Values.llm.apiKey }}
+            {{- if or .Values.llm.existingSecret .Values.llm.apiKey .Values.vault.enabled }}
             - name: llm-key
               # subPath file mount: mounting the whole secret at
               # /run/secrets would shadow kubernetes.io projected
@@ -110,7 +110,7 @@ spec:
               subPath: llm_api_key
               readOnly: true
             {{- end }}
-            {{- if .Values.gpg.importKey }}
+            {{- if or .Values.gpg.importKey .Values.vault.gpg.key }}
             - name: gpg-key
               mountPath: /home/appuser/gpg-key.asc
               subPath: gpg-key.asc
@@ -139,13 +139,13 @@ spec:
         - name: metrics-data
           persistentVolumeClaim:
             claimName: {{ include "thoth.fullname" . }}-metrics
-        {{- if or .Values.llm.existingSecret .Values.llm.apiKey }}
+        {{- if or .Values.llm.existingSecret .Values.llm.apiKey .Values.vault.enabled }}
         - name: llm-key
           secret:
             secretName: {{ include "thoth.llmSecretName" . }}
             defaultMode: 0400
         {{- end }}
-        {{- if .Values.gpg.importKey }}
+        {{- if or .Values.gpg.importKey .Values.vault.gpg.key }}
         - name: gpg-key
           secret:
             secretName: {{ include "thoth.gpgSecretName" . }}

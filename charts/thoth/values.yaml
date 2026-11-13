@@ -7,15 +7,41 @@ image:
   tag: "latest"
   pullPolicy: IfNotPresent
 
-# Registry credentials: when set, the chart CREATES an image pull
-# secret and attaches it to the pod. Leave empty for public registries.
+# Registry credentials. Sources (pick one):
+#   a) vault.enabled=true -> ExternalSecret syncs username/password from
+#      vault and the chart renders the dockerconfigjson pull secret
+#   b) username/password inline -> chart creates the pull secret
+#   c) existingSecret -> reference a pre-created secret
 imagePullSecret:
   enabled: true
   registry: pdr-harbor.jarakube.com
   username: ""
   password: ""
-  # alternatively reference an existing secret:
   existingSecret: ""
+
+# Vault integration via External Secrets Operator (ClusterSecretStore
+# 'vault-backend' must exist). When enabled, the chart creates
+# ExternalSecrets that sync from vault into the SAME secret names the
+# inline values would create - the pod wiring is identical either way.
+vault:
+  enabled: false
+  store:
+    kind: ClusterSecretStore
+    name: vault-backend
+  refreshInterval: 1h
+  # LLM API key: vault path/property -> secret key 'llm_api_key'
+  llm:
+    key: ""            # e.g. infrastructure/thoth
+    property: "LLM_API_KEY"
+  # GPG armored key export: -> secret key 'gpg-key.asc'
+  gpg:
+    key: ""
+    property: "GPG_KEY_ASC"
+  # Registry pull credentials: -> dockerconfigjson (templated by ESO)
+  registry:
+    key: ""
+    usernameProperty: "REGISTRY_USERNAME"
+    passwordProperty: "REGISTRY_PASSWORD"
 
 # The agent's working directory: goosetown is cloned into it, skills and
 # repos live here. Persistence keeps it across pod restarts.

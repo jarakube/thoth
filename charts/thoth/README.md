@@ -58,6 +58,42 @@ monitoring:
 | ServiceMonitor (optional) | For Prometheus Operator scraping |
 | helm test pod | `helm test` verifies /metrics answers |
 
+## Vault integration (External Secrets Operator)
+
+Set `vault.enabled=true` to source all secrets from vault instead of
+values files. The chart creates ExternalSecrets (v1beta1) against the
+cluster's `vault-backend` ClusterSecretStore that sync into the SAME
+secret names the inline values would create - the pod wiring is
+identical either way:
+
+| Secret | Vault path / property (values) | Synced secret |
+|---|---|---|
+| LLM API key | `vault.llm.key` + `property` | `thoth-llm` (`llm_api_key`) |
+| GPG key export | `vault.gpg.key` + `property` | `thoth-gpg` (`gpg-key.asc`) |
+| Registry pull | `vault.registry.key` + username/password properties | `thoth-pull` (dockerconfigjson, templated by ESO) |
+
+```yaml
+vault:
+  enabled: true
+  store: {kind: ClusterSecretStore, name: vault-backend}
+  refreshInterval: 1h
+  llm:
+    key: infrastructure/thoth        # vault KV path
+    property: LLM_API_KEY
+  registry:
+    key: infrastructure/thoth
+    usernameProperty: REGISTRY_USERNAME
+    passwordProperty: REGISTRY_PASSWORD
+```
+
+The pull secret is assembled by the ExternalSecret `template`
+(ESO go-templating renders the dockerconfigjson from the synced
+username/password properties).
+
+Flux note: ExternalSecrets are plain CRs - fully GitOps-compatible;
+ESO handles the refresh (`refreshInterval`) so vault-side rotations
+reach the pod without redeploying.
+
 ## Notes
 
 - **Flux compatible**: no Helm lifecycle hooks except the standard
