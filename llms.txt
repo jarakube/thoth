@@ -26,6 +26,7 @@ API keys can come from `pass` via docker compose secrets.
 - [Makefile](https://github.com/jarakube/thoth/blob/main/Makefile): uid-matched build (make up), pass key loading, shell/run/logs targets
 - [.env.example](https://github.com/jarakube/thoth/blob/main/.env.example): all configuration variables, commented
 - [docker build (CI)](https://github.com/jarakube/thoth/blob/main/.github/workflows/build.yml): ghcr.io publish, owner-gated PR builds, Trivy digest scan
+- [release pipeline](https://github.com/jarakube/thoth/blob/main/.github/workflows/release.yml): push a semver tag (v*) -> tagged image (vX.Y.Z / X.Y / X / latest), Trivy-scan, GitHub Release with digest and changelog
 
 ## Optional
 
