@@ -50,6 +50,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     gnupg \
     gnupg-utils \
     pinentry-curses \
+    openssh-client \
     apt-transport-https \
     && rm -rf /var/lib/apt/lists/*
 
