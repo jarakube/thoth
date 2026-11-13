@@ -327,6 +327,31 @@ and publishes it to `ghcr.io/<owner>/thoth` using the default
 images are also scanned with Trivy (fail on CRITICAL/HIGH findings,
 unfixed only); the scan runs on every push, not on pull requests.
 
+### Releases (tagged images)
+
+Push a semver tag to cut a release:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+`.github/workflows/release.yml` then builds, scans (Trivy, same
+severity policy - an unfixed CRITICAL/HIGH finding fails the release),
+and publishes:
+
+| Image tag | Example |
+|---|---|
+| the tag | `ghcr.io/jarakube/thoth:v0.1.0` |
+| major.minor | `ghcr.io/jarakube/thoth:0.1` |
+| major | `ghcr.io/jarakube/thoth:0` |
+| latest | `ghcr.io/jarakube/thoth:latest` |
+
+and creates a GitHub Release with the image references (tag + digest)
+and the commit history since the previous tag. Tag pushes are
+owner-controlled, so releases run WITHOUT the `ready for test` gate;
+DCO still applies to every commit.
+
 ## Configure OpenCode to use Keycloak
 
 > **Note: this requires a custom OpenCode build.** The stock

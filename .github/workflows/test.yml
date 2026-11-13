@@ -27,7 +27,7 @@ jobs:
       - name: Check out repository
         # local composite actions (uses: ./...) need the repo checked out
         # before they can be referenced
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
       - name: Ready for test gate
         id: gate
         uses: ./.github/actions/ready-for-test-gate
@@ -49,7 +49,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install bats and shellcheck
         run: |
