@@ -1,0 +1,17 @@
+apiVersion: v2
+name: thoth
+description: >-
+  Containerized agent environment: OpenCode + goose/goosetown + kubectl,
+  with a Prometheus metrics endpoint. One thoth per namespace
+  (single stateful replica).
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/jarakube/thoth
+sources:
+  - https://github.com/jarakube/thoth
+maintainers:
+  - name: jarakube
+    url: https://jarakube.eu
+annotations:
+  artifacthub.io/license: MIT
