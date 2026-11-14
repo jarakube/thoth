@@ -1,0 +1,134 @@
+# Kubernetes Operations Skill Configuration
+name: k8s-operations
+version: 1.0.0
+description: Comprehensive Kubernetes operations management for jaraco k8s-operations project
+
+# Skill capabilities
+capabilities:
+  - flux-cd
+  - istio-service-mesh
+  - vault-integration
+  - external-secrets
+  - networking
+  - certificate-management
+  - application-deployment
+  - multi-cluster-management
+  - observability
+
+# Project-specific configuration
+project:
+  name: k8s-operations
+  repository: https://github.com/jaracogmbh/k8s-operations.git
+  primary_cluster: jarakube
+  
+# Domain configuration
+domains:
+  primary:
+    - "*.jarakube.com"
+    - "*.jarakube.eu"
+  
+# Namespace configuration
+namespaces:
+  infrastructure:
+    - flux-system
+    - istio-ingress-external
+    - istio-ingress-internal
+    - istio-egress
+    - vault
+    - metallb-system
+    - cert-manager
+  environments:
+    - develop
+    - production
+  
+# Gateway configuration
+gateways:
+  external:
+    namespace: istio-ingress-external
+    selector: istio: external-gateway
+    domains: ["*.jarakube.eu"]
+    https_redirect: true
+  internal:
+    namespace: istio-ingress-internal
+    selector: istio: internal-gateway
+    domains: ["*.jarakube.com"]
+    https_redirect: true
+
+# Vault configuration
+vault:
+  namespace: vault
+  storage_class: rook-ceph-block
+  storage_size: 15Gi
+  ha_enabled: true
+  ui_enabled: true
+  auto_unseal:
+    enabled: true
+    schedule: "*/10 * * * *"
+    unseal_key_secret: vault-unseal-key
+
+# External Secrets configuration
+external_secrets:
+  cluster_secret_store: vault-backend
+  vault_server: http://vault.vault.svc.cluster.local:8200
+  vault_path: kv/jaraco
+  auth_method: token
+  token_secret: vault-token
+
+# MetalLB configuration
+metallb:
+  namespace: metallb-system
+  ingress_pool:
+    name: ingress-pool
+    addresses: ["192.168.178.121/32"]
+    auto_assign: true
+
+# cert-manager configuration
+cert_manager:
+  namespace: cert-manager
+  cluster_issuer: letsencrypt-prod
+  acme_server: https://acme-v02.api.letsencrypt.org/directory
+
+# Flux CD configuration
+flux:
+  namespace: flux-system
+  sync_interval: 10m0s
+  source_interval: 1m0s
+  prune: true
+
+# Default values for new resources
+defaults:
+  virtualservice:
+    protocol: HTTP
+    timeout: 30s
+    retries:
+      attempts: 3
+      per_try_timeout: 2s
+  
+  deployment:
+    replicas: 1
+    revision_history_limit: 3
+    strategy:
+      type: RollingUpdate
+      rolling_update:
+        max_surge: 25%
+        max_unavailable: 25%
+  
+  service:
+    type: ClusterIP
+    session_affinity: None
+
+# Security defaults
+security:
+  run_as_non_root: true
+  read_only_root_filesystem: true
+  allow_privilege_escalation: false
+  capabilities_drop: ["ALL"]
+
+# Resource limits defaults
+resources:
+  limits:
+    cpu: 1000m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi

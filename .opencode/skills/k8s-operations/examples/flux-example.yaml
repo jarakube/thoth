@@ -1,0 +1,283 @@
+# Flux CD Examples for k8s-operations
+# These examples show how to configure Flux for various scenarios
+
+---
+# GitRepository for application source
+
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: my-app-repo
+  namespace: flux-system
+spec:
+  # How often to check for changes
+  interval: 1m0s
+  
+  # Git repository URL
+  url: https://github.com/jaracogmbh/my-app.git
+  
+  # Branch to watch
+  ref:
+    branch: main
+  
+  # Secret containing SSH key or token for authentication
+  secretRef:
+    name: my-app-git-credentials
+  
+  # Optional: timeout for Git operations
+  timeout: 20s
+
+---
+# HelmRepository for Helm charts
+
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: bitnami
+  namespace: flux-system
+spec:
+  # How often to check for chart updates
+  interval: 24h
+  
+  # Helm repository URL
+  url: https://charts.bitnami.com/bitnami
+  
+  # Optional: timeout for Helm operations
+  timeout: 30s
+
+---
+# Kustomization for application deployment
+
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: my-app-develop
+  namespace: flux-system
+spec:
+  # How often to reconcile
+  interval: 10m0s
+  
+  # Path to Kustomize manifests in the Git repository
+  path: ./apps/develop/my-app
+  
+  # Reference to the GitRepository
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  
+  # Prune resources that are no longer in Git
+  prune: true
+  
+  # Validate manifests before applying
+  validation: client
+  
+  # Health checks for deployed resources
+  healthChecks:
+  - apiVersion: apps/v1
+    kind: Deployment
+    name: my-app
+    namespace: develop
+  
+  # Optional: timeout for reconciliation
+  timeout: 5m0s
+  
+  # Optional: retry interval on failure
+  retryInterval: 1m0s
+
+---
+# Kustomization for infrastructure
+
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: infrastructure
+  namespace: flux-system
+spec:
+  interval: 5m0s
+  path: ./infrastructure
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  prune: true
+  validation: client
+  
+  # Dependencies - wait for these to be ready first
+  dependsOn:
+  - name: flux-system
+
+---
+# HelmRelease for Helm chart deployment
+
+apiVersion: helm.toolkit.fluxcd.io/v2beta1
+kind: HelmRelease
+metadata:
+  name: redis
+  namespace: develop
+spec:
+  # How often to reconcile
+  interval: 5m0s
+  
+  # Chart to deploy
+  chart:
+    spec:
+      chart: redis
+      version: "17.x.x"
+      sourceRef:
+        kind: HelmRepository
+        name: bitnami
+        namespace: flux-system
+  
+  # Values for the Helm chart
+  values:
+    architecture: standalone
+    auth:
+      enabled: true
+    master:
+      persistence:
+        enabled: true
+        storageClass: rook-ceph-block
+        size: 10Gi
+  
+  # Target namespace
+  targetNamespace: develop
+  
+  # Install/upgrade timeout
+  timeout: 10m0s
+  
+  # Rollback on failure
+  rollback:
+    enable: true
+    timeout: 5m0s
+
+---
+# Complete Flux bootstrap for a new cluster
+
+# 1. First, install Flux CLI:
+# brew install fluxcd/tap/flux
+
+# 2. Bootstrap Flux:
+# flux bootstrap github \
+#   --owner=jaracogmbh \
+#   --repository=k8s-operations \
+#   --branch=main \
+#   --path=./clusters/jarakube \
+#   --network-policy=false \
+#   --personal
+
+# 3. This creates the following resources:
+
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 1m0s
+  ref:
+    branch: main
+  secretRef:
+    name: flux-system
+  url: https://github.com/jaracogmbh/k8s-operations.git
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  path: ./clusters/jarakube
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+
+---
+# Flux configuration for multi-environment setup
+
+# apps-develop.yaml
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: apps-develop
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  path: ./apps/develop
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+  - name: infrastructure
+
+# apps-production.yaml
+apiVersion: kustomize.toolkit.io/v1
+kind: Kustomization
+metadata:
+  name: apps-production
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  path: ./apps/production
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+  - name: infrastructure
+  # More conservative settings for production
+  retryInterval: 2m0s
+  timeout: 10m0s
+
+---
+# Flux Image Automation (for automatic image updates)
+
+apiVersion: image.toolkit.fluxcd.io/v1beta2
+kind: ImageRepository
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  image: my-registry/my-app
+  interval: 1h0s
+
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImagePolicy
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  imageRepositoryRef:
+    name: my-app
+  filter:
+    tags:
+      pattern: "^v[0-9]+\.[0-9]+\.[0-9]+$"
+  policy:
+    numerical:
+      order: ascending
+
+---
+apiVersion: image.toolkit.fluxcd.io/v1beta1
+kind: ImageUpdateAutomation
+metadata:
+  name: my-app
+  namespace: flux-system
+spec:
+  interval: 10m0s
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: flux-image-updater
+        email: flux@jaraco.com
+      messageTemplate: "Update my-app to {{ .Object }}"
+  update:
+    path: ./apps/develop/my-app
+    strategy: Setters

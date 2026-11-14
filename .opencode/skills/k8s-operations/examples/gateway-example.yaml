@@ -1,0 +1,310 @@
+# Gateway Examples for k8s-operations
+# These examples show how to create Istio Gateways for different scenarios
+
+---
+# Basic Gateway for internal services (jarakube.com)
+
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: jarakube-com-internal-shared-gateway
+  namespace: istio-ingress-internal
+  labels:
+    domain: jarakube.com
+    environment: internal
+    managed-by: flux
+spec:
+  # Selector to choose which ingress gateway to use
+  selector:
+    istio: internal-gateway
+  
+  # List of servers (ports) to expose
+  servers:
+  # HTTP server with HTTPS redirect
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*.jarakube.com"
+    tls:
+      httpsRedirect: true
+  
+  # HTTPS server
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "*.jarakube.com"
+    tls:
+      mode: SIMPLE
+      credentialName: jarakube-com-wildcard-tls
+
+---
+# Gateway for external services (jarakube.eu)
+
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: jarakube-eu-gateway
+  namespace: istio-ingress-external
+  labels:
+    domain: jarakube.eu
+    environment: external
+    managed-by: flux
+spec:
+  selector:
+    istio: external-gateway
+  servers:
+  - port:
+      number: 443
+      name: https-443
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: jarakube-wildcard-tls
+    hosts:
+    - "*.jarakube.eu"
+  - port:
+      number: 80
+      name: http-80
+      protocol: HTTP
+    hosts:
+    - "*.jarakube.eu"
+    tls:
+      httpsRedirect: true
+
+---
+# Gateway with multiple domains
+
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: multi-domain-gateway
+  namespace: istio-ingress-internal
+spec:
+  selector:
+    istio: internal-gateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*.jarakube.com"
+    - "*.my-domain.com"
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "*.jarakube.com"
+    - "*.my-domain.com"
+    tls:
+      mode: SIMPLE
+      credentialName: wildcard-tls
+
+---
+# Gateway with mutual TLS (mTLS)
+
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: mtls-gateway
+  namespace: istio-ingress-internal
+spec:
+  selector:
+    istio: internal-gateway
+  servers:
+  - port:
+      number: 443
+      name: https-mtls
+      protocol: HTTPS
+    hosts:
+    - "secure.jarakube.com"
+    tls:
+      mode: MUTUAL
+      credentialName: mtls-cert
+
+---
+# Gateway with SNI-based routing
+
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: sni-gateway
+  namespace: istio-ingress-internal
+spec:
+  selector:
+    istio: internal-gateway
+  servers:
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "app1.jarakube.com"
+    - "app2.jarakube.com"
+    tls:
+      mode: SIMPLE
+      credentialName: sni-cert
+
+---
+# Egress Gateway for outbound traffic
+
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: common-egress-gateway
+  namespace: istio-egress
+spec:
+  selector:
+    istio: egressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*.external-service.com"
+
+---
+# Gateway with custom port
+
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: custom-port-gateway
+  namespace: istio-ingress-internal
+spec:
+  selector:
+    istio: internal-gateway
+  servers:
+  - port:
+      number: 8080
+      name: custom-http
+      protocol: HTTP
+    hosts:
+    - "custom.jarakube.com"
+  - port:
+      number: 8443
+      name: custom-https
+      protocol: HTTPS
+    hosts:
+    - "custom.jarakube.com"
+    tls:
+      mode: SIMPLE
+      credentialName: custom-cert
+
+---
+# Gateway with IP-based hosting (for internal services)
+
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: ip-based-gateway
+  namespace: istio-ingress-internal
+spec:
+  selector:
+    istio: internal-gateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "192.168.178.121"
+
+---
+# Complete Gateway setup with VirtualService
+
+# 1. Gateway
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: my-app-gateway
+  namespace: istio-ingress-internal
+spec:
+  selector:
+    istio: internal-gateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "my-app.jarakube.com"
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    hosts:
+    - "my-app.jarakube.com"
+    tls:
+      mode: SIMPLE
+      credentialName: my-app-tls
+---
+# 2. VirtualService
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: my-app-vs
+  namespace: develop
+spec:
+  hosts:
+  - "my-app.jarakube.com"
+  gateways:
+  - istio-ingress-internal/my-app-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: my-app-service
+        port:
+          number: 80
+---
+# 3. Certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: my-app-tls
+  namespace: istio-ingress-internal
+spec:
+  secretName: my-app-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+  - "my-app.jarakube.com"
+
+---
+# Gateway with TCP port (for non-HTTP traffic)
+
+apiVersion: networking.istio.io/v1
+kind: Gateway
+metadata:
+  name: tcp-gateway
+  namespace: istio-ingress-internal
+spec:
+  selector:
+    istio: internal-gateway
+  servers:
+  - port:
+      number: 3306
+      name: mysql
+      protocol: MYSQL
+    hosts:
+    - "mysql.jarakube.com"
+  - port:
+      number: 5432
+      name: postgres
+      protocol: POSTGRES
+    hosts:
+    - "postgres.jarakube.com"

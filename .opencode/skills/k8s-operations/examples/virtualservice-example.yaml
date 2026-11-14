@@ -1,0 +1,206 @@
+# VirtualService Example for k8s-operations
+# This example shows how to create a VirtualService for a typical application
+
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: my-app-vs
+  namespace: develop
+  labels:
+    app: my-app
+    environment: develop
+    managed-by: flux
+spec:
+  # Hosts that this VirtualService will handle
+  hosts:
+  - "my-app-dev.jarakube.com"
+  # Optionally, you can add additional hostnames
+  # - "my-app.jarakube.com"
+  
+  # Gateways that this VirtualService will use
+  gateways:
+  - istio-ingress-internal/jarakube-com-internal-shared-gateway
+  # For external access, you could also use:
+  # - istio-ingress-external/jarakube-eu-gateway
+  
+  # HTTP traffic routing rules
+  http:
+  # Main route - matches all paths
+  - match:
+    - uri:
+        prefix: /
+    # Route to the service
+    route:
+    - destination:
+        host: my-app-service
+        port:
+          number: 80
+    # Timeout configuration
+    timeout: 30s
+    # Retry configuration
+    retries:
+      attempts: 3
+      perTryTimeout: 2s
+      retryOn: gateway-error,connect-failure,refused-stream
+    
+  # Additional route for API endpoints
+  - match:
+    - uri:
+        prefix: /api
+    route:
+    - destination:
+        host: my-app-service
+        port:
+          number: 80
+    # Different timeout for API calls
+    timeout: 60s
+    
+  # Route for health checks
+  - match:
+    - uri:
+        exact: /health
+    route:
+    - destination:
+        host: my-app-service
+        port:
+          number: 80
+    timeout: 5s
+
+---
+# Advanced VirtualService with multiple destinations
+
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: multi-service-vs
+  namespace: develop
+spec:
+  hosts:
+  - "multi.jarakube.com"
+  gateways:
+  - istio-ingress-internal/jarakube-com-internal-shared-gateway
+  http:
+  # Route based on path prefix
+  - match:
+    - uri:
+        prefix: /service-a
+    route:
+    - destination:
+        host: service-a
+        port:
+          number: 80
+  - match:
+    - uri:
+        prefix: /service-b
+    route:
+    - destination:
+        host: service-b
+        port:
+          number: 80
+  # Default route
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: service-a
+        port:
+          number: 80
+
+---
+# VirtualService with TLS configuration
+
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: secure-app-vs
+  namespace: develop
+spec:
+  hosts:
+  - "secure-app.jarakube.com"
+  gateways:
+  - istio-ingress-internal/jarakube-com-internal-shared-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: secure-app-service
+        port:
+          number: 443
+    timeout: 30s
+
+---
+# VirtualService with header-based routing
+
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: header-based-vs
+  namespace: develop
+spec:
+  hosts:
+  - "header-app.jarakube.com"
+  gateways:
+  - istio-ingress-internal/jarakube-com-internal-shared-gateway
+  http:
+  - match:
+    - headers:
+        version:
+          exact: v1
+    route:
+    - destination:
+        host: app-v1-service
+        port:
+          number: 80
+  - match:
+    - headers:
+        version:
+          exact: v2
+    route:
+    - destination:
+        host: app-v2-service
+        port:
+          number: 80
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: app-v1-service
+        port:
+          number: 80
+
+---
+# VirtualService with fault injection (for testing)
+
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: fault-injection-vs
+  namespace: develop
+spec:
+  hosts:
+  - "fault-test.jarakube.com"
+  gateways:
+  - istio-ingress-internal/jarakube-com-internal-shared-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /
+    route:
+    - destination:
+        host: test-service
+        port:
+          number: 80
+    # Fault injection for testing
+    faults:
+    - delay:
+        percentage:
+          value: 10
+        fixedDelay: 5s
+    - abort:
+        percentage:
+          value: 5
+        httpStatus: 500
