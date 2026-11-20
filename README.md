@@ -641,6 +641,7 @@ events (flow, dns, tls, http, alert, stats) to `suricata/logs/eve.json`.
 ```bash
 make suricata-init    # validate the versioned sensor config
 make suricata-up      # start thoth + the suricata sidecar
+                      # (loads the LLM key from pass exactly like make up)
 make suricata-down    # stop both (logs persist in suricata/logs/)
 
 # overview report: hosts (TLS SNI when observed), egress/ingress
