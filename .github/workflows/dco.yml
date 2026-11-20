@@ -20,13 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           # full history: the DCO check needs all commits, not a shallow clone
           fetch-depth: 0
 
       - name: DCO check
-        uses: christophebedard/dco-check@master
+        uses: christophebedard/dco-check@0.5.1
         with:
           args: "--verbose"
         env:
