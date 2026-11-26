@@ -723,6 +723,40 @@ Caveats:
 - Blocking is a security control, not a substitute for the monitoring:
   combine with `make suricata-report` to verify what remains reachable.
 
+## Kubernetes (Helm chart)
+
+A Helm chart deploys thoth to Kubernetes: a single-replica StatefulSet
+(one thoth per namespace) with PVC-backed state (workspace, opencode
+sessions, gnupg keyring, beads database, metrics artifacts), the LLM
+key as a k8s Secret mounted at the same path the compose secret uses,
+metrics probes + Service, and an optional Prometheus Operator
+ServiceMonitor. Flux-compatible: no lifecycle hooks, plain labels.
+
+```bash
+helm install thoth ./charts/thoth -n thoth --create-namespace \
+  --set imagePullSecret.username=... --set imagePullSecret.password=... \
+  --set llm.endpoint=https://litellm.example.com/v1 --set llm.apiKey=sk-...
+```
+
+All PVC sizes and storage classes are configurable via values. Secrets
+come from three interchangeable sources: inline values (chart creates
+the Secrets), `existingSecret` references, or **vault** via the
+External Secrets Operator (`vault.enabled=true` - the chart creates
+ExternalSecrets against the cluster's `vault-backend` store, including
+the registry pull secret as a templated dockerconfigjson).
+
+```bash
+# verify after install
+kubectl get pod -n thoth          # thoth-0  1/1 Running
+helm test thoth -n thoth          # /metrics answers
+kubectl exec -it thoth-0 -n thoth -- bash   # agent shell
+```
+
+The chart README has a complete vault-backed production example
+(storage classes, all secret sources, monitoring), post-install
+verification, a Flux HelmRelease snippet, and the full values
+reference: [charts/thoth/README.md](charts/thoth/README.md).
+
 ## Repository notes
 
 - [llms.txt](llms.txt) / [llms-full.txt](llms-full.txt): documentation
