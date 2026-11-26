@@ -1,10 +1,11 @@
 # Integrating other agents
 
-This container ships OpenCode and goose/goosetown, but it is a generic
-tooling environment: any CLI coding agent that runs on Linux and installs
-via npm (or a plain binary) works inside it. This guide shows how to add
-the common agents, where each one loads skills and MCP servers from, and
-how to map your existing `skills/` directory into them.
+This container ships OpenCode, goose/goosetown, and the Mistral Vibe CLI,
+but it is a generic tooling environment: any CLI coding agent that runs on
+Linux and installs via npm, uv, or a plain binary works inside it. This
+guide shows how to add the common agents, where each one loads skills and
+MCP servers from, and how to map your existing `skills/` directory into
+them.
 
 The general pattern for every agent:
 
@@ -35,6 +36,7 @@ Each agent loads it as follows:
 | Claude Code | Reads `AGENTS.md` when no `CLAUDE.md`/`CLAUDE.local.md` exists in or above the working directory (v2.1.277+); otherwise import it from `CLAUDE.md` with `@AGENTS.md`, or change the Project instructions setting |
 | Gemini CLI | Via config: `{"context": {"fileName": "AGENTS.md"}}` in `~/.gemini/settings.json` (default file is `GEMINI.md`) |
 | goose | Reads instructions from the goosetown clone's `AGENTS.md` (orchestrator/delegate context) |
+| Vibe | Native: reads the project's `AGENTS.md`; on first run in a project with `AGENTS.md` or Vibe config, asks to trust the folder before loading local configuration |
 
 Practical tips:
 
@@ -54,6 +56,7 @@ Practical tips:
 | [Codex CLI](https://developers.openai.com/codex) | `npm i -g @openai/codex` | `~/.agents/skills/` (user), `.agents/skills/` (repo), `/etc/codex/skills` (admin) | `codex mcp add` / `~/.codex/config.toml` |
 | [Gemini CLI](https://geminicli.com/docs) | `npm i -g @google/gemini-cli` | `~/.gemini/skills` | `~/.gemini/settings.json` (`mcpServers`) |
 | [goose](https://github.com/aaif-goose/goose) | preinstalled | goosetown skills (see [goosetown](#goose--goosetown-preinstalled)) | `~/.config/goose/config.yaml` (`mcp_servers`) |
+| [Vibe](https://docs.mistral.ai/vibe/code/cli) | preinstalled | `~/.vibe/skills/`, `~/.agents/skills/` (user), `.vibe/skills/`, `.agents/skills/` (project) | `vibe mcp add` / `~/.vibe/config.toml` (`[[mcp_servers]]`) |
 
 All skill formats above use the same core convention: a directory per
 skill containing a `SKILL.md` with `name` and `description` frontmatter
@@ -223,6 +226,56 @@ mcp_servers:
 
 (The container entrypoint writes this example server automatically - see
 [docs/mcp.md](mcp.md).)
+
+## Vibe (preinstalled)
+
+The [Mistral Vibe CLI](https://docs.mistral.ai/vibe/code/cli) is installed
+in the image (`vibe`, plus `vibe-acp` for ACP-capable editors; see the
+README's [Vibe section](../README.md#vibe-mistral) for auth, persistence,
+and the full notes).
+
+```bash
+docker compose exec thoth vibe --version   # verify
+docker compose run --rm thoth vibe         # interactive session in /workspace
+```
+
+Authentication: `MISTRAL_API_KEY` from the environment - plain env var
+in `.env`, the `mistral_api_key` compose secret (`MISTRAL_API_KEY_FILE`),
+or a `pass` entry wired in by `make up` (`PASS_MISTRAL_ENTRY`; the
+entrypoint provisions vibe's own `~/.vibe/.env`, so every invocation -
+`docker compose run`, a bare `compose exec thoth vibe`, an interactive
+shell - finds the key) - or run `vibe --setup` and paste a key (stored
+in `~/.vibe/.env`). The browser-based sign-in wizard cannot open a
+browser inside the container - prefer the env/secret paths.
+
+### Skills
+
+Vibe follows the [agent-skills](https://agentskills.io) specification and
+discovers skills from:
+
+- custom paths configured in `config.toml` (`skill_paths = ["..."]`)
+- project scope: `.vibe/skills/` or `.agents/skills/` (trusted folders only)
+- user scope: `~/.vibe/skills/` or `~/.agents/skills/`
+
+```bash
+# user-scope skills for all projects
+mkdir -p ~/.agents/skills
+cp -r /path/to/repo/skills/* ~/.agents/skills/
+```
+
+### MCP servers
+
+```bash
+# remote server, no auth
+vibe mcp add jarakube-website --url https://jarakube.eu/mcp
+
+# authenticated via an env var (headless-safe; OAuth sign-in needs a
+# localhost browser callback the container cannot serve)
+vibe mcp add my-server --url https://mcp.example.com/mcp --api-key-env MY_TOKEN
+```
+
+Config lives in `~/.vibe/config.toml` as `[[mcp_servers]]` tables. Verify
+with `/mcp` inside a session.
 
 ## Baking agents into a derived image
 

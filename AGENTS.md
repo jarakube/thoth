@@ -46,13 +46,15 @@ goosetown clone and MCP registration lines.
 ## Repository structure
 
 - `Dockerfile` - image: ubuntu 26.04, kubectl 1.36, goose (ARG GOOSE_VERSION),
-  opencode from npm (or `build/opencode/opencode` custom binary), goosetown
-  tooling copy at `/app/goosetown`
+  vibe CLI (ARG VIBE_VERSION, installed as a uv tool), opencode from npm
+  (or `build/opencode/opencode` custom binary), goosetown tooling copy at
+  `/app/goosetown`
 - `scripts/container-entrypoint.sh` - startup: workspace writability check,
   goosetown clone into `$GOOSETOWN_DIR`, example MCP registration, metrics
   exporter
 - `docker-compose.yml` / `Makefile` - workspace bind mount, opencode-data
-  volume, uid-matched build args
+  and vibe-data volumes, pass-wired LLM and Mistral key secrets,
+  uid-matched build args
 - `skills/` - OpenCode skills bundled into the image; `docs/` - integration
   guides (MCP, other agents)
 

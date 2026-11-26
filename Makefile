@@ -12,6 +12,11 @@ HOST_GID := $(shell id -g)
 # point LLM_API_KEY_FILE at a file yourself.
 PASS_LLM_ENTRY ?= llm/thoth-api-key
 
+# Same pattern for the Mistral API key (Vibe CLI / goose mistral
+# provider): `make up` wires the pass entry into the mistral_api_key
+# compose secret; the entrypoint exports it as MISTRAL_API_KEY.
+PASS_MISTRAL_ENTRY ?= llm/thoth-mistral-api-key
+
 .PHONY: up down build shell run logs ps clean test suricata-init suricata-up suricata-down suricata-report block-egress
 
 # --- Suricata IDS sidecar (opt-in) ----------------------------------------
@@ -21,12 +26,14 @@ suricata-init:
 	./scripts/init-suricata.sh
 
 # Start thoth + the suricata sidecar (shares thoth's network namespace,
-# passively captures on eth0, writes suricata/logs/eve.json)
+# passively captures on eth0, writes suricata/logs/eve.json). Loads both
+# API keys (LLM + Mistral) from pass like `make up`.
 suricata-up:
 	@set -e; \
 	$(load-llm-key); \
-	trap 'test -n "$$keyfile" && rm -f "$$keyfile"' EXIT; \
-	LLM_API_KEY_FILE="$$keyfile" HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) \
+	$(load-mistral-key); \
+	trap 'test -n "$$keyfile" && rm -f "$$keyfile"; test -n "$$mistral_keyfile" && rm -f "$$mistral_keyfile"' EXIT; \
+	LLM_API_KEY_FILE="$$keyfile" MISTRAL_API_KEY_FILE="$$mistral_keyfile" HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) \
 	  docker compose -f docker-compose.yml -f docker-compose.suricata.yml up -d
 
 # Overview report of the captured traffic: hosts, egress/ingress
@@ -73,11 +80,26 @@ else \
 fi
 endef
 
+# Shared: load the Mistral key from pass into a temp file (compose secret).
+# Sets MISTRAL_KEYFILE (empty when unavailable); caller must clean it up.
+define load-mistral-key
+mistral_keyfile=""; \
+if command -v pass >/dev/null 2>&1 && pass show $(PASS_MISTRAL_ENTRY) >/dev/null 2>&1; then \
+  mistral_keyfile="/tmp/thoth-mistral-key.$$$$"; \
+  pass show $(PASS_MISTRAL_ENTRY) | head -n1 > "$$mistral_keyfile"; chmod 600 "$$mistral_keyfile"; \
+  echo "make: Mistral key loaded from pass entry '$(PASS_MISTRAL_ENTRY)'"; \
+else \
+  echo "make: pass entry '$(PASS_MISTRAL_ENTRY)' not available - starting without Mistral key secret"; \
+fi
+endef
+
 up:
 	@set -e; \
 	$(load-llm-key); \
-	trap 'test -n "$$keyfile" && rm -f "$$keyfile"' EXIT; \
-	LLM_API_KEY_FILE="$$keyfile" HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) \
+	$(load-mistral-key); \
+	trap 'test -n "$$keyfile" && rm -f "$$keyfile"; test -n "$$mistral_keyfile" && rm -f "$$mistral_keyfile"' EXIT; \
+	LLM_API_KEY_FILE="$$keyfile" MISTRAL_API_KEY_FILE="$$mistral_keyfile" \
+	HOST_UID=$(HOST_UID) HOST_GID=$(HOST_GID) \
 	  docker compose up -d --build
 
 # Stop the agent (volumes and host bind mounts are preserved)
