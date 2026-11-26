@@ -64,6 +64,8 @@ services:
       OPENAI_API_BASE: ${OPENAI_API_BASE:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Also used by the Vibe CLI; when unset here, the entrypoint loads it
+      # from the mistral_api_key secret below (e.g. from `pass` via make up)
       MISTRAL_API_KEY: ${MISTRAL_API_KEY:-}
       # --- Shared LLM endpoint (single source of truth) -------------------
       # Configure once; scripts/sync-llm-config.sh writes BOTH the OpenCode
@@ -124,6 +126,10 @@ services:
       # credentials do not land in the project directory; docker seeds its
       # ownership from the image on first use, so appuser can write.
       - opencode-data:/home/appuser/.local/share/opencode
+      # Vibe CLI state: config.toml, credentials (.env), trusted folders.
+      # Named volume for the same reason; ownership seeded from the image
+      # (~/.vibe exists as appuser in the Dockerfile).
+      - vibe-data:/home/appuser/.vibe
       # --- Optional mounts (uncomment as needed) ---
       # Kubernetes cluster access:
       # - ${HOME}/.kube:/home/appuser/.kube:ro
@@ -147,10 +153,11 @@ services:
       # project has no .beads/ of its own; persists across restarts
       - beads-data:/data/beads
     secrets:
-      # Optional: LLM API key as a file (see the top-level secrets: block).
-      # When LLM_API_KEY_FILE is unset this mounts an empty file
-      # (/dev/null fallback) and the sync script ignores it.
+      # Optional API keys as files instead of env vars (see the top-level
+      # secrets: block). When the *_FILE variables are unset these mount
+      # empty files (/dev/null fallback) and the entrypoint ignores them.
       - llm_api_key
+      - mistral_api_key
     healthcheck:
       # Healthy when the metrics endpoint answers, or when the exporter is
       # intentionally disabled (OPENCODE_METRICS_ENABLED=0).
@@ -162,15 +169,20 @@ services:
 
 volumes:
   opencode-data:
+  vibe-data:
   gnupg-data:
   beads-data:
 
 secrets:
-  # API key as a file instead of an env var - keeps the key out of
-  # `docker inspect` and shell history. Point LLM_API_KEY_FILE at a file
-  # produced by your secret manager, e.g.:
+  # API keys as files instead of env vars - keeps keys out of
+  # `docker inspect` and shell history. Point the *_FILE variables at
+  # files produced by your secret manager, e.g.:
   #   pass show path/to/llm-key > /tmp/llm-key   (or use `make up`, which
   #   wires LLM_API_KEY_FILE via `pass` automatically when available)
-  # Unset -> empty fallback; the sync script ignores an empty secret.
+  # Unset -> empty fallback; the entrypoint ignores empty secrets.
   llm_api_key:
     file: ${LLM_API_KEY_FILE:-/dev/null}
+  # Mistral API key (Vibe CLI / goose mistral provider) - same pattern;
+  # `make up` wires it from the PASS_MISTRAL_ENTRY pass entry.
+  mistral_api_key:
+    file: ${MISTRAL_API_KEY_FILE:-/dev/null}

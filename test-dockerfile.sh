@@ -9,9 +9,11 @@ echo "🔍 Testing Dockerfile syntax..."
 DOCKERFILE="${DOCKERFILE:-Dockerfile}"
 
 # Check for unclosed heredocs
+# (grep -c exits 1 on zero matches, which is valid here: the Dockerfile
+# no longer uses those heredocs, and 0 is an even number)
 echo "Checking for unclosed heredoc markers..."
-LITELLM_COUNT=$(grep -c "LITELLM_EOF" "$DOCKERFILE")
-WRAPPER_COUNT=$(grep -c "WRAPPER_EOF" "$DOCKERFILE")
+LITELLM_COUNT=$(grep -c "LITELLM_EOF" "$DOCKERFILE" || true)
+WRAPPER_COUNT=$(grep -c "WRAPPER_EOF" "$DOCKERFILE" || true)
 
 echo "  LITELLM_EOF markers: $LITELLM_COUNT (should be even number)"
 echo "  WRAPPER_EOF markers: $WRAPPER_COUNT (should be even number)"

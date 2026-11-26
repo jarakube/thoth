@@ -83,6 +83,77 @@ import time; time.sleep(30)
   [ -f "$TEST_DIR/gnupg/common.conf" ]
 }
 
+# --- load_secret_key (compose-secret env loading) ----------------------------
+
+@test "load_secret_key: exports the trimmed first secret line as the env var" {
+  mkdir -p "$TEST_DIR/secrets"
+  printf '  sk-secret-1  \nsecond line\n' > "$TEST_DIR/secrets/key"
+  load_secret_key TEST_KEY_VAR "$TEST_DIR/secrets/key"
+  [ "$TEST_KEY_VAR" = "sk-secret-1" ]
+}
+
+@test "load_secret_key: an already-set env var wins over the secret" {
+  TEST_KEY_VAR="from-env"
+  printf 'from-secret\n' > "$TEST_DIR/keyfile"
+  load_secret_key TEST_KEY_VAR "$TEST_DIR/keyfile"
+  [ "$TEST_KEY_VAR" = "from-env" ]
+}
+
+@test "load_secret_key: missing or empty secret is a no-op" {
+  : > "$TEST_DIR/empty"
+  load_secret_key TEST_KEY_VAR "$TEST_DIR/empty"
+  [ -z "${TEST_KEY_VAR:-}" ]
+  load_secret_key TEST_KEY_VAR "$TEST_DIR/does-not-exist"
+  [ -z "${TEST_KEY_VAR:-}" ]
+}
+
+# --- persist_mistral_key (vibe .env + interactive-shell persistence) --------
+
+@test "mistral persistence: vibe .env + mode-600 snippet with env precedence, .bashrc hook once" {
+  touch "$HOME/.bashrc"
+  persist_mistral_key "sk-mistral-1"
+  # vibe's own credential store: present, mode 600, single line
+  [ -f "$HOME/.vibe/.env" ]
+  grep -q "^MISTRAL_API_KEY=sk-mistral-1$" "$HOME/.vibe/.env"
+  [ "$(stat -c %a "$HOME/.vibe/.env")" = "600" ]
+  # interactive-shell snippet: present, mode 600
+  [ -f "$HOME/.config/thoth/mistral-key.sh" ]
+  [ "$(stat -c %a "$HOME/.config/thoth/mistral-key.sh")" = "600" ]
+  # sourcing the snippet without an env var yields the embedded key
+  (
+    unset MISTRAL_API_KEY
+    . "$HOME/.config/thoth/mistral-key.sh"
+    [ "$MISTRAL_API_KEY" = "sk-mistral-1" ]
+  )
+  # an env var set at runtime (rotated key) still wins
+  (
+    export MISTRAL_API_KEY="rotated"
+    . "$HOME/.config/thoth/mistral-key.sh"
+    [ "$MISTRAL_API_KEY" = "rotated" ]
+  )
+  # .bashrc hook: present, and written only once on repeat starts
+  grep -q "mistral-key.sh" "$HOME/.bashrc"
+  first_count="$(grep -c "mistral-key.sh" "$HOME/.bashrc")"
+  persist_mistral_key "sk-mistral-2"
+  second_count="$(grep -c "mistral-key.sh" "$HOME/.bashrc")"
+  [ "$first_count" -gt 0 ]
+  [ "$first_count" = "$second_count" ]
+  # the snippet itself is rewritten on rotation
+  grep -q "sk-mistral-2" "$HOME/.config/thoth/mistral-key.sh"
+  [ "$(stat -c %a "$HOME/.config/thoth/mistral-key.sh")" = "600" ]
+}
+
+@test "mistral persistence: rotation updates the vibe .env line in place, preserves other credentials" {
+  touch "$HOME/.bashrc"
+  mkdir -p "$HOME/.vibe"
+  printf 'OTHER_PROVIDER_KEY=keepme\nMISTRAL_API_KEY=sk-old\n' > "$HOME/.vibe/.env"
+  persist_mistral_key "sk-new"
+  grep -q "^OTHER_PROVIDER_KEY=keepme$" "$HOME/.vibe/.env"
+  grep -q "^MISTRAL_API_KEY=sk-new$" "$HOME/.vibe/.env"
+  [ "$(grep -c "^MISTRAL_API_KEY=" "$HOME/.vibe/.env")" -eq 1 ]
+  [ "$(stat -c %a "$HOME/.vibe/.env")" = "600" ]
+}
+
 # --- beads resolution (mirrors the entrypoint logic) -----------------------
 
 @test "beads resolution: explicit BEADS_DIR wins" {

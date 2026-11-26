@@ -15,6 +15,7 @@ This repository builds a CLI agent image that combines:
 
 - [OpenCode](https://opencode.ai) (`opencode-ai`) for interactive coding/ops workflows
 - [Goose](https://github.com/aaif-goose/goose) + [Goosetown](https://github.com/aaif-goose/goosetown) for multi-agent orchestration
+- [Vibe](https://docs.mistral.ai/vibe) (Mistral Vibe Code CLI) as a third coding agent
 - `kubectl` for Kubernetes cluster access
 - A small, generic skill pack (a Ceph expert skill and a thoth developer skill)
 
@@ -42,6 +43,7 @@ by [Jaraco GmbH](https://www.jaraco.de).
 | Goose | `/usr/local/bin/goose` | Pinned via `ARG GOOSE_VERSION` (default `v1.50.0`) |
 | Goosetown | `/app/goosetown` | Public [aaif-goose/goosetown](https://github.com/aaif-goose/goosetown) git submodule |
 | kubectl | `/usr/local/bin/kubectl` | v1.36 from pkgs.k8s.io |
+| Vibe CLI | `/usr/local/bin/vibe` | Mistral Vibe Code CLI, pinned via `ARG VIBE_VERSION` (default `3.1.5`); also provides `vibe-acp` |
 | Skills | `/home/appuser/.config/opencode/skills/` | Everything from repo `skills/` directory |
 | Metrics exporter | `/app/scripts/opencode-prometheus-exporter.py` | Listens on `:9464` |
 | gh CLI | `/usr/bin/gh` | For GitHub workflows from inside the container |
@@ -308,6 +310,20 @@ In all cases the sync script reads the key from the env var or the
 secret file and exports it for the agents - it is never written to any
 generated config file (configs only reference the variable).
 
+The Mistral API key (Vibe CLI, goose `mistral` provider) supports the
+same three options under its own names: `PASS_MISTRAL_ENTRY` (default
+`llm/thoth-mistral-api-key`; create it with
+`pass insert llm/thoth-mistral-api-key`) with `make up`,
+`MISTRAL_API_KEY_FILE` for the `mistral_api_key` compose secret, or plain
+`MISTRAL_API_KEY` in `.env`. The entrypoint keeps the same precedence:
+environment first, secret file second - and provisions `~/.vibe/.env`
+so every `vibe` invocation finds the key, no matter how it was started.
+
+Key rotation note: `docker compose up` keeps a running container when
+only the key files changed, so a rotated key is applied on the next
+fresh start - force it with `make down && make up` (or
+`docker compose up -d --force-recreate`).
+
 Goosetown runs as a **working clone inside the workspace**: the container
 entrypoint clones `https://github.com/aaif-goose/goosetown.git` to
 `workspace/goosetown` on first start (skipped if the directory already
@@ -318,6 +334,70 @@ persists on the host through the workspace bind mount. Use your own fork via
 `GOOSETOWN_REPO_URL`/`GOOSETOWN_REF`, or point `GOOSETOWN_DIR` at an existing
 clone. The image also carries a tooling copy at `/app/goosetown` used as
 fallback for the `goose` telepathy wrapper.
+
+## Vibe (Mistral)
+
+The image also ships the [Mistral Vibe CLI](https://docs.mistral.ai/vibe/code/cli)
+(`vibe`, plus `vibe-acp` for ACP-capable editors) as a third coding agent.
+It is installed as a pinned uv tool (`ARG VIBE_VERSION`) in an isolated
+venv against the system Python 3.14.
+
+```bash
+docker compose run --rm thoth vibe        # interactive session in /workspace
+docker compose exec thoth vibe --version  # verify
+```
+
+Authentication:
+
+- The CLI reads `MISTRAL_API_KEY` from the environment first (env beats
+  `~/.vibe/.env` and the OS keyring) - the browser-based sign-in wizard
+  cannot open a browser inside the container, so env auth is the
+  recommended path. Create a key at
+  [chat.mistral.ai/code/extensions](https://chat.mistral.ai/code/extensions)
+  and hand it to the container the same way as the
+  [shared LLM key](#keeping-the-api-key-out-of-env-pass-compose-secrets):
+  plain `MISTRAL_API_KEY` in `.env`, a compose secret via
+  `MISTRAL_API_KEY_FILE`, or - recommended - a `pass` entry that
+  `make up` wires into the `mistral_api_key` compose secret
+  (`PASS_MISTRAL_ENTRY`, default `llm/thoth-mistral-api-key`; create it
+  once with `pass insert llm/thoth-mistral-api-key`). The entrypoint then
+  provisions vibe's own credential file `~/.vibe/.env` (mode 600, loaded
+  automatically by the CLI) plus a `.bashrc` snippet - so `vibe` finds
+  the key however it is started: `docker compose run`, a bare
+  `docker compose exec thoth vibe` (no shell involved), or an
+  interactive shell. The key never lands in `.env`, `docker inspect`,
+  or any world-readable file.
+- Alternatively run `vibe --setup` in an interactive session and paste an
+  API key; it is stored in `~/.vibe/.env`.
+- Any OpenAI-compatible provider can be wired via `[[providers]]` presets
+  in `~/.vibe/config.toml`, or the CLI runs fully offline with local
+  models - see
+  [API keys and profiles](https://docs.mistral.ai/vibe/code/cli/api-keys-profiles).
+
+Notes:
+
+- The first run in a project containing an `AGENTS.md` or Vibe
+  configuration (`.vibe/config.toml`, `.agents/skills/`) asks whether to
+  trust the folder before loading local configuration - answer once, the
+  choice is remembered.
+- Skills: vibe follows the same
+  [agent-skills](https://agentskills.io) convention - user skills from
+  `~/.vibe/skills/` or `~/.agents/skills/`, project skills from
+  `.vibe/skills/` or `.agents/skills/`. Reuse this repo's skill pack the
+  same way as for [OpenCode](#skills).
+- MCP: `vibe mcp add <name> --url https://...` writes `~/.vibe/config.toml`.
+  For authenticated servers pass `--api-key-env VAR` - OAuth sign-in needs
+  a `localhost` browser callback the container cannot serve, so use static
+  auth. Example:
+
+  ```bash
+  docker compose exec thoth vibe mcp add jarakube-website --url https://jarakube.eu/mcp
+  ```
+
+- Shell commands run directly from the session when prefixed with `!`
+  (e.g. `!git status`).
+- Config and credentials live in `~/.vibe`, persisted across restarts via
+  the `vibe-data` named volume.
 
 ## CI
 

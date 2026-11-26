@@ -71,10 +71,29 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && rm -rf /var/lib/apt/lists/*
 
 # goose binary (pinned via ARG)
-ARG GOOSE_VERSION=v1.50.0
+ARG GOOSE_VERSION=v1.61.1
 COPY --chmod=755 scripts/install-goose.sh /usr/local/bin/install-goose.sh
 RUN GOOSE_VERSION=${GOOSE_VERSION} GOOSE_BIN_DIR=/usr/local/bin /usr/local/bin/install-goose.sh \
     && /usr/local/bin/goose --version
+
+# Vibe CLI (Mistral Vibe Code): `vibe` + `vibe-acp`, installed the way the
+# official installer does it under the hood - as a uv tool in an isolated
+# venv (UV_TOOL_DIR) with executables linked into /usr/local/bin. The
+# system python3 on ubuntu:26.04 satisfies --python 3.14, so no managed
+# CPython download is needed; UV_PYTHON_INSTALL_DIR is still set as the
+# fallback location should a future base image change the system version.
+# Pin via --build-arg VIBE_VERSION=x.y.z.
+# Docs: https://docs.mistral.ai/getting-started/quickstarts/vibe-code/install-cli
+ARG VIBE_VERSION=3.1.5
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    export UV_NO_MODIFY_PATH=1 \
+           UV_INSTALL_DIR=/usr/local/bin \
+           UV_PYTHON_INSTALL_DIR=/opt/uv/python \
+           UV_TOOL_DIR=/opt/uv/tools \
+           UV_TOOL_BIN_DIR=/usr/local/bin \
+    && curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && uv tool install --python 3.14 "mistral-vibe==${VIBE_VERSION}" \
+    && vibe --version
 
 # Copy npm global installs from builder (node_modules + bin symlinks)
 COPY --from=builder /usr/local/lib/node_modules /usr/local/lib/node_modules
@@ -111,10 +130,11 @@ RUN if getent group appuser >/dev/null 2>&1; then true; \
 
 # ~/.gnupg must exist in the image so the gnupg-data compose volume
 # inherits appuser ownership on first use (fresh named volumes are
-# root-owned otherwise; docker seeds volume ownership from image content)
-RUN mkdir -p /home/appuser/.local/share/opencode/skills /home/appuser/.local/share/opencode/repos /home/appuser/.ssh /home/appuser/.config/goosetown /home/appuser/.gnupg \
+# root-owned otherwise; docker seeds volume ownership from image content).
+# Same for ~/.vibe (Vibe CLI config/credentials -> vibe-data volume).
+RUN mkdir -p /home/appuser/.local/share/opencode/skills /home/appuser/.local/share/opencode/repos /home/appuser/.ssh /home/appuser/.config/goosetown /home/appuser/.gnupg /home/appuser/.vibe \
     && chmod 700 /home/appuser/.gnupg \
-    && chown -R appuser:appuser /home/appuser/.gnupg
+    && chown -R appuser:appuser /home/appuser/.gnupg /home/appuser/.vibe
 
 # /data/beads must exist in the image so the beads-data compose volume
 # inherits appuser ownership on first use (fresh named volumes are
