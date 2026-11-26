@@ -71,7 +71,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && rm -rf /var/lib/apt/lists/*
 
 # goose binary (pinned via ARG)
-ARG GOOSE_VERSION=v1.50.0
+ARG GOOSE_VERSION=v1.61.1
 COPY --chmod=755 scripts/install-goose.sh /usr/local/bin/install-goose.sh
 RUN GOOSE_VERSION=${GOOSE_VERSION} GOOSE_BIN_DIR=/usr/local/bin /usr/local/bin/install-goose.sh \
     && /usr/local/bin/goose --version
